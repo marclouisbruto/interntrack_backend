@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"fmt"
+	"intern_template_v1/model"
+	"log"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -25,5 +27,21 @@ func ConnectDB() bool {
 
 	DBConn, DBErr = gorm.Open(postgres.Open(dns), &gorm.Config{})
 
-	return DBErr != nil
+	MigrateDB()
+
+	return false
+}
+
+func MigrateDB() {
+	if DBConn == nil {
+		log.Fatal("Database connection is not initialized")
+		return
+	}
+
+	err := DBConn.AutoMigrate(&model.User{}, &model.Supervisor{}, &model.Role{}, &model.Intern{}, &model.Handler{}, &model.Adviser{}, &model.QRCode{}, &model.DTREntry{}) // Add more models if needed
+	if err != nil {
+		log.Fatal("Migration failed:", err)
+	} else {
+		fmt.Println("Database migration completed successfully!")
+	}
 }
