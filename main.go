@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"intern_template_v1/controller"
 	"intern_template_v1/middleware"
 	"intern_template_v1/routes"
 
@@ -29,7 +28,6 @@ func main() {
 	// API ROUTES
 	// Sample Endpoint
 	// localhost:5566/check
-	app.Get("/check", controller.SampleController)
 
 	// Do not remove this endpoint
 	app.Get("/favicon.ico", func(c *fiber.Ctx) error {

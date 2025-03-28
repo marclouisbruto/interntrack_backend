@@ -14,6 +14,11 @@ func AppRoutes(app *fiber.App) {
 
 	app.Post("/role/insert", controller.CreateRole)
 
+	//Fill up all data in intern
+	app.Post("/user/:id/create-intern", controller.CreateIntern)
+	app.Post("/user/:id/create-supervisor", controller.CreateSuperVisor)
+	app.Post("/user/intern/create", controller.InsertAllDataIntern)
+
 	//FOR USER REGISTRATION
 	app.Post("/user/insert", controller.CreateUser)
 	// CREATE YOUR ENDPOINTS HERE

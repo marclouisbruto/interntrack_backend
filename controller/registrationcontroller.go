@@ -6,6 +6,7 @@ import (
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
+	"strconv"
 
 	//"regexp"
 
@@ -13,12 +14,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
-
-// SampleController is an example endpoint which returns a
-// simple string message.
-func SampleController(c *fiber.Ctx) error {
-	return c.SendString("Hello, Golang World!")
-}
 
 // INSERT NEW ROLE
 func CreateRole(c *fiber.Ctx) error {
@@ -105,13 +100,10 @@ func CreateUser(c *fiber.Ctx) error {
 			Data:    err,
 		})
 	}
-
-	var newRole model.Role
-	if err := middleware.DBConn.
-		Preload("Role").
-		First(&newRole, user.ID).Error; err != nil {
+	//pamfetch ng role_id
+	if err := middleware.DBConn.Preload("Role").First(&user, user.ID).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Failed to retrieve role details",
+			"message": "Failed to retrieve user with role",
 		})
 	}
 
@@ -119,6 +111,110 @@ func CreateUser(c *fiber.Ctx) error {
 		RetCode: "200",
 		Message: "User successfully added.",
 		Data:    user,
+	})
+}
+
+// WORKING
+func CreateIntern(c *fiber.Ctx) error {
+	userID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid user ID",
+		})
+	}
+
+	intern := new(model.Intern)
+	if err := c.BodyParser(intern); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": err,
+		})
+	}
+
+	// Confirm if the user exists and is an intern role
+	var user model.User
+	if err := middleware.DBConn.First(&user, userID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"message": "User not found",
+		})
+	}
+	if user.RoleID != 4 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "This user is not an Intern",
+		})
+	}
+
+	intern.UserID = uint(userID)
+
+	if err := middleware.DBConn.Create(intern).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to create Intern info",
+			"error":   err.Error(),
+		})
+	}
+
+	// Reload with Preload to load relations
+	if err := middleware.DBConn.Preload("Adviser").Preload("Supervisor").Preload("Handler").First(&intern, intern.ID).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to load related data",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Intern successfully created",
+		Data:    intern,
+	})
+}
+
+func CreateSuperVisor(c *fiber.Ctx) error {
+	superId, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid user ID",
+		})
+	}
+
+	supervisor := new(model.Supervisor)
+	if err := c.BodyParser(supervisor); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": err,
+		})
+	}
+
+	// Validate that the user exists and has role_id = 1 (Super Visor)
+	var user model.User
+	if err := middleware.DBConn.First(&user, superId).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"message": "User not found",
+		})
+	}
+	if user.RoleID != 1 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "This user is not a Super Visor!",
+		})
+	}
+
+	var existingSupervisor model.Supervisor
+	if err := middleware.DBConn.Where("user_id = ?", superId).First(&existingSupervisor).Error; err == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "This supervisor already has a department assigned",
+		})
+	}
+
+	// Assign the userID from params to handler
+	supervisor.UserID = uint(superId)
+
+	if err := middleware.DBConn.Create(supervisor).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to create Super Visor info",
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Super Visor successfully created",
+		Data:    supervisor,
 	})
 }
 
