@@ -11,7 +11,7 @@ type (
 type Role struct {
 	gorm.Model
 	RoleName string `json:"role_name"`
-	Users    []User `gorm:"foreignKey:RoleID"`
+	User     []User `gorm:"foreignKey:RoleID"`
 }
 
 type User struct {
@@ -35,6 +35,9 @@ type Supervisor struct {
 	gorm.Model
 	UserID     uint   `json:"user_id"`
 	Department string `json:"department"`
+	Status     string `json:"status"`
+
+	User User `gorm:"foreignKey:UserID"`
 }
 
 type Intern struct {
@@ -49,6 +52,7 @@ type Intern struct {
 	Status           string `json:"status"`
 	Address          string `json:"address"`
 
+	User       User       `gorm:"foreignKey:UserID"`
 	Supervisor Supervisor `gorm:"foreignKey:SupervisorID"`
 	QRCodes    []QRCode   `gorm:"foreignKey:InternID"`
 	DtrEntries []DTREntry `gorm:"foreignKey:InternID"`
@@ -66,7 +70,7 @@ type DTREntry struct {
 	gorm.Model
 	UserID     uint    `json:"user_id"`
 	InternID   uint    `json:"intern_id"`
-	HandlerID  uint    `json:"handler_id"`
+	SupervisorID uint    `json:"supervisor_id"`
 	Month      string  `json:"month"`
 	TimeInAM   string  `json:"time_in_am"`
 	TimeOutAM  string  `json:"time_out_am"`
@@ -74,5 +78,6 @@ type DTREntry struct {
 	TimeOutPM  string  `json:"time_out_pm"`
 	TotalHours float64 `json:"total_hours"`
 
-	Intern Intern `gorm:"foreignKey:InternID"`
+	Intern     Intern     `gorm:"foreignKey:InternID"`
+	Supervisor Supervisor `gorm:"foreignKey:SupervisorID"`
 }

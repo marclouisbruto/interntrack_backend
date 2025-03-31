@@ -15,6 +15,11 @@ import (
 	"gorm.io/gorm"
 )
 
+type SupervisorRequest struct {
+	User       model.User       `json:"user"`
+	Supervisor model.Supervisor `json:"supervisor"`
+}
+
 // INSERT NEW ROLE
 func CreateRole(c *fiber.Ctx) error {
 	role := new(model.Role)
@@ -114,7 +119,7 @@ func CreateUser(c *fiber.Ctx) error {
 	})
 }
 
-// WORKING
+// ADD NEW INTERNS
 func CreateIntern(c *fiber.Ctx) error {
 	userID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
@@ -137,7 +142,7 @@ func CreateIntern(c *fiber.Ctx) error {
 			"message": "User not found",
 		})
 	}
-	if user.RoleID != 4 {
+	if user.RoleID != 2 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "This user is not an Intern",
 		})
@@ -153,7 +158,7 @@ func CreateIntern(c *fiber.Ctx) error {
 	}
 
 	// Reload with Preload to load relations
-	if err := middleware.DBConn.Preload("Adviser").Preload("Supervisor").Preload("Handler").First(&intern, intern.ID).Error; err != nil {
+	if err := middleware.DBConn.Preload("Supervisor").First(&intern, intern.ID).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Failed to load related data",
 			"error":   err.Error(),
@@ -167,6 +172,7 @@ func CreateIntern(c *fiber.Ctx) error {
 	})
 }
 
+// ADD NEW SUPERVISOR
 func CreateSuperVisor(c *fiber.Ctx) error {
 	superId, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
@@ -215,6 +221,116 @@ func CreateSuperVisor(c *fiber.Ctx) error {
 		RetCode: "200",
 		Message: "Super Visor successfully created",
 		Data:    supervisor,
+	})
+}
+
+// EDIT SUPERVISOR'S DATA
+func EditSupervisor(c *fiber.Ctx) error {
+	id := c.Params("id") // Retrieve the ID from the route parameters
+
+	req := new(SupervisorRequest)
+	if err := c.BodyParser(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid request body",
+			"error":   err.Error(),
+		})
+	}
+
+	err := middleware.DBConn.Transaction(func(tx *gorm.DB) error {
+		// Update user
+		if err := tx.Model(&model.User{}).Where("id = ?", id).Updates(req.Supervisor).Error; err != nil {
+			return err
+		}
+
+		// Update supervisor
+		if err := tx.Model(&model.Supervisor{}).Where("user_id = ?", id).Updates(req.Supervisor).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Transaction failed",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Intern and User data successfully updated.",
+		Data:    req,
+	})
+}
+
+// GET ALL DATA OF INTERNS
+func GetAllSupervisor(c *fiber.Ctx) error {
+	getAllSupervisor := []model.Intern{}
+
+	err := middleware.DBConn.Preload("User").Find(&getAllSupervisor).Error
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to retrieve Supervisor",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Supervisors retrieved successfully.",
+		Data:    getAllSupervisor,
+	})
+}
+
+// GET SINGLE INTERN
+func GetSingleSupervisor(c *fiber.Ctx) error {
+	id := c.Params("id") // Retrieve the ID from the route parameters
+
+	singleSupervisor := new(model.Supervisor)
+
+	err := middleware.DBConn.Preload("User").First(&singleSupervisor, "id = ?", id).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"message": "Supervisor not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to retrieve Supervisor",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Supervisor retrieved successfully.",
+		Data:    singleSupervisor,
+	})
+}
+
+// Archive Supervisor
+func ArchiveSupervisor(c *fiber.Ctx) error {
+	id := c.Params("id") // Retrieve the ID from the route parameters
+
+	err := middleware.DBConn.Transaction(func(tx *gorm.DB) error {
+		// Update Supervisor status to "archived"
+		if err := tx.Model(&model.Supervisor{}).Where("id = ?", id).Update("status", "Archived").Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to archive Supervisor",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Supervisor successfully archived.",
 	})
 }
 
