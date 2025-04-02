@@ -4,6 +4,7 @@ import (
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
 	"golang.org/x/crypto/bcrypt"
@@ -70,8 +71,8 @@ func InsertAllDataIntern(c *fiber.Ctx) error {
 
 	if err := middleware.DBConn.Preload("Role").First(&req.User, req.User.ID).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Failed to retrieve user with role", 
-			"error": err.Error()})
+			"message": "Failed to retrieve user with role",
+			"error":   err.Error()})
 	}
 
 	return c.JSON(response.ResponseModel{
@@ -87,16 +88,16 @@ func EditIntern(c *fiber.Ctx) error {
 	req := new(InternRequest)
 	if err := c.BodyParser(req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "Invalid request body", 
-			"error": err.Error()})
+			"message": "Invalid request body",
+			"error":   err.Error()})
 	}
 
 	if req.User.Password != "" {
 		hashedPassword, err := hashPassword(req.User.Password)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"message": "Failed to hash password", 
-				"error": err.Error()})
+				"message": "Failed to hash password",
+				"error":   err.Error()})
 		}
 		req.User.Password = hashedPassword
 	}
@@ -113,8 +114,8 @@ func EditIntern(c *fiber.Ctx) error {
 
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Transaction failed", 
-			"error": err.Error()})
+			"message": "Transaction failed",
+			"error":   err.Error()})
 	}
 
 	return c.JSON(response.ResponseModel{
@@ -128,8 +129,8 @@ func GetAllInterns(c *fiber.Ctx) error {
 	getAllInterns := []model.Intern{}
 	if err := middleware.DBConn.Preload("User").Find(&getAllInterns).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Failed to retrieve interns", 
-			"error": err.Error()})
+			"message": "Failed to retrieve interns",
+			"error":   err.Error()})
 	}
 
 	return c.JSON(response.ResponseModel{
@@ -148,8 +149,8 @@ func GetSingleIntern(c *fiber.Ctx) error {
 				"message": "Intern not found"})
 		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Failed to retrieve intern", 
-			"error": err.Error()})
+			"message": "Failed to retrieve intern",
+			"error":   err.Error()})
 	}
 
 	return c.JSON(response.ResponseModel{
@@ -172,11 +173,75 @@ func ArchiveIntern(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Failed to archive intern",
-			 "error": err.Error()})
+			"error":   err.Error()})
 	}
 
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
 		Message: "Intern successfully archived.",
+	})
+}
+
+//PANG APPROVE NG INTERN
+func ApproveInterns(c *fiber.Ctx) error {
+	internID := c.Params("id") // Extract intern_id from URL param
+
+	// Check if the intern exists and status is pending
+	var intern struct {
+		Status string
+	}
+	if err := middleware.DBConn.Table("interns").Select("status").Where("id = ?", internID).First(&intern).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Intern not found",
+		})
+	}
+
+	// Ensure we are only approving pending interns
+	if intern.Status != "Pending" {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error": "Intern status is not pending",
+		})
+	}
+
+	// Update the status
+	if err := middleware.DBConn.Table("interns").Where("id = ?", internID).Update("status", "Approved").Error; err != nil {
+		log.Println("Failed to update intern status:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update status",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Intern status updated successfully",
+	})
+}
+
+// SEARCH NG INTERNS
+func SearchInternByName(c *fiber.Ctx) error {
+	name := c.Params("name") // Get the name from the URL parameter
+
+	if name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Name parameter is required",
+		})
+	}
+
+	var interns []model.User // Searching in the users table
+
+	// Filter users with role = 2 (Intern) and match name
+	if err := middleware.DBConn.
+		Where("role_id = ?", 2). // Ensure only interns are retrieved
+		Where("CONCAT(first_name, ' ', last_name) ILIKE ?", "%"+name+"%").Preload("Role").
+		Find(&interns).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to search interns",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Interns retrieved successfully.",
+		Data:    interns,
 	})
 }

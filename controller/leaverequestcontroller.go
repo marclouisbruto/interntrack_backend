@@ -5,6 +5,7 @@ import (
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -108,4 +109,39 @@ func ViewExcuseLetter(c *fiber.Ctx) error {
 
 	// Return the file
 	return c.SendFile(filePath)
+}
+
+
+//PANG APPROVE NG LEAVE REQUEST
+func ApproveLeaveRequest(c *fiber.Ctx) error {
+	leaveRequestID := c.Params("id") // Extract intern_id from URL param
+
+	// Check if the leave requests exists and status is pending
+	var intern struct {
+		Status string
+	}
+	if err := middleware.DBConn.Table("leave_requests").Select("status").Where("id = ?", leaveRequestID).First(&intern).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Leave request not found",
+		})
+	}
+
+	// Ensure we are only approving pending interns
+	if intern.Status != "Pending" {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error": "Leave request status is not pending",
+		})
+	}
+
+	// Update the status
+	if err := middleware.DBConn.Table("leave_requests").Where("id = ?", leaveRequestID).Update("status", "Approved").Error; err != nil {
+		log.Println("Failed to update leave request status:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update status",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Leave requests status updated successfully",
+	})
 }

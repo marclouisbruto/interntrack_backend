@@ -46,8 +46,13 @@ func AppRoutes(app *fiber.App) {
 	app.Post("/login", controller.Login)
 
 	//Add leave request
-	app.Post("/leave-request/upload", controller.CreateLeaveRequest)
-	app.Static("/uploads/excuse_letters", "./uploads/excuse_letters")
-	app.Get("/view-excuse-letter/:filename", controller.ViewExcuseLetter)
+	internTrack.Post("/leave-request/upload", controller.CreateLeaveRequest)
+	internTrack.Static("/uploads/excuse_letters", "./uploads/excuse_letters") //tumutulong sa pang view or pathing ng image
+	internTrack.Get("/view-excuse-letter/:filename", controller.ViewExcuseLetter)
 
+	internTrack.Get("/search/:name", controller.SearchInternByName)
+
+	//change status
+	internTrack.Put("/user/status/intern/:id", controller.ApproveInterns)
+	internTrack.Put("/leave-request/status/:id", controller.ApproveLeaveRequest)
 }
