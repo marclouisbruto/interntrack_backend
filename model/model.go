@@ -68,16 +68,26 @@ type QRCode struct {
 
 type DTREntry struct {
 	gorm.Model
-	UserID     uint    `json:"user_id"`
-	InternID   uint    `json:"intern_id"`
+	UserID       uint    `json:"user_id"`
+	InternID     uint    `json:"intern_id"`
 	SupervisorID uint    `json:"supervisor_id"`
-	Month      string  `json:"month"`
-	TimeInAM   string  `json:"time_in_am"`
-	TimeOutAM  string  `json:"time_out_am"`
-	TimeInPM   string  `json:"time_in_pm"`
-	TimeOutPM  string  `json:"time_out_pm"`
-	TotalHours float64 `json:"total_hours"`
+	Month        string  `json:"month"`
+	TimeInAM     string  `json:"time_in_am"`
+	TimeOutAM    string  `json:"time_out_am"`
+	TimeInPM     string  `json:"time_in_pm"`
+	TimeOutPM    string  `json:"time_out_pm"`
+	TotalHours   float64 `json:"total_hours"`
 
 	Intern     Intern     `gorm:"foreignKey:InternID"`
 	Supervisor Supervisor `gorm:"foreignKey:SupervisorID"`
+}
+
+type LeaveRequest struct {
+	gorm.Model
+	InternID     uint   `json:"intern_id" gorm:"not null;constraint:OnDelete:CASCADE"`
+	Reason       string `json:"reason" gorm:"type:text;not null"`
+	ExcuseLetter string `json:"excuse_letter,omitempty"` // File path or URL (optional)
+	Status       string `json:"status" gorm:"type:varchar(20);default:'Pending'"`
+
+	Intern Intern `gorm:"foreignKey:InternID"` // Relationship to Interns table
 }
