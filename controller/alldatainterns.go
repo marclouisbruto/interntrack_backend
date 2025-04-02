@@ -1,10 +1,12 @@
 package controller
 
 import (
+	"fmt"
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
 	"log"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"golang.org/x/crypto/bcrypt"
@@ -82,6 +84,7 @@ func InsertAllDataIntern(c *fiber.Ctx) error {
 	})
 }
 
+// EDIT INTERNS' DATA
 func EditIntern(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -182,29 +185,48 @@ func ArchiveIntern(c *fiber.Ctx) error {
 	})
 }
 
-//PANG APPROVE NG INTERN
+// PANG APPROVE NG INTERN
 func ApproveInterns(c *fiber.Ctx) error {
-	internID := c.Params("id") // Extract intern_id from URL param
-
-	// Check if the intern exists and status is pending
-	var intern struct {
-		Status string
+	// Extract intern IDs from URL param or body (assuming comma-separated values)
+	internIDs := c.Params("ids") // Example: "1,2,3" for multiple IDs
+	if internIDs == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Intern IDs are required",
+		})
 	}
-	if err := middleware.DBConn.Table("interns").Select("status").Where("id = ?", internID).First(&intern).Error; err != nil {
+
+	// Split intern IDs into a slice
+	idList := strings.Split(internIDs, ",")
+
+	// Check if the interns exist and their status is pending
+	var interns []struct {
+		ID     uint   `json:"id"`
+		Status string `json:"status"`
+	}
+
+	// Find all interns by their IDs
+	if err := middleware.DBConn.Table("interns").
+		Select("id, status").
+		Where("id IN (?)", idList).
+		Find(&interns).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Intern not found",
+			"error": "Interns not found",
 		})
 	}
 
-	// Ensure we are only approving pending interns
-	if intern.Status != "Pending" {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-			"error": "Intern status is not pending",
-		})
+	// Ensure all interns are in pending status
+	for _, intern := range interns {
+		if intern.Status != "Pending" {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": fmt.Sprintf("Intern with ID %d is not in 'Pending' status", intern.ID),
+			})
+		}
 	}
 
-	// Update the status
-	if err := middleware.DBConn.Table("interns").Where("id = ?", internID).Update("status", "Approved").Error; err != nil {
+	// Update status to "Approved" for all interns
+	if err := middleware.DBConn.Table("interns").
+		Where("id IN (?)", idList).
+		Update("status", "Approved").Error; err != nil {
 		log.Println("Failed to update intern status:", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update status",
@@ -212,7 +234,7 @@ func ApproveInterns(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"message": "Intern status updated successfully",
+		"message": fmt.Sprintf("Interns with IDs [%s] updated to 'Approved' successfully", internIDs),
 	})
 }
 

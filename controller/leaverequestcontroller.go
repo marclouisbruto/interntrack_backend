@@ -80,6 +80,17 @@ func CreateLeaveRequest(c *fiber.Ctx) error {
 		})
 	}
 
+	// Preload Intern details
+	if err := middleware.DBConn.Preload("Intern").Preload("Intern.User").
+	Preload("Intern.User.Role").
+	Preload("Intern.Supervisor").Preload("Intern.Supervisor.User").Preload("Intern.Supervisor.User.Role").
+
+		First(&leaveRequest, leaveRequest.ID).Error; err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Failed to load intern details",
+		})
+	}
+
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
 		Message: "Leave request successfully added",
@@ -111,8 +122,7 @@ func ViewExcuseLetter(c *fiber.Ctx) error {
 	return c.SendFile(filePath)
 }
 
-
-//PANG APPROVE NG LEAVE REQUEST
+// PANG APPROVE NG LEAVE REQUEST
 func ApproveLeaveRequest(c *fiber.Ctx) error {
 	leaveRequestID := c.Params("id") // Extract intern_id from URL param
 
