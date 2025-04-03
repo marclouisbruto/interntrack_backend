@@ -3,8 +3,8 @@ package controller
 import (
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
-	"intern_template_v1/model/response"	
-
+	"intern_template_v1/model/response"
+	
 	"github.com/gofiber/fiber/v2"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -92,4 +92,28 @@ func Login(c *fiber.Ctx) error {
 		Message: "Unauthorized role",
 	})
 }
+
+func Logout(c *fiber.Ctx) error {
+	token := c.Get("Authorization")
+	if token == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "No token provided",
+		})
+	}
+
+	// Remove "Bearer " prefix
+	if len(token) > 7 && token[:7] == "Bearer " {
+		token = token[7:]
+	}
+
+	// Blacklist the token
+	middleware.BlacklistToken(token)
+
+	return c.JSON(fiber.Map{
+		"message": "Logout successful. Token is now invalidated.",
+	})
+}
+
+
+
 

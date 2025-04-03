@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,7 +13,7 @@ import (
 )
 
 func init() {
-	err := godotenv.Load() // Load from .env file
+	err := godotenv.Load()
 	if err != nil {
 		log.Println("Warning: No .env file found")
 	}
@@ -20,6 +21,12 @@ func init() {
 
 // Secret key for signing tokens (should be stored in env variables)
 var SecretKey = os.Getenv("SECRET_KEY")
+
+// Mutex to handle concurrent writes to tokenBlacklist
+var mu sync.Mutex
+
+// Token blacklist map
+var tokenBlacklist = make(map[string]bool)
 
 // GenerateJWT generates a new JWT token
 func GenerateJWT(userID uint) (string, error) {
@@ -37,6 +44,20 @@ func GenerateJWT(userID uint) (string, error) {
 	return tokenString, nil
 }
 
+// BlacklistToken adds a token to the blacklist
+func BlacklistToken(token string) {
+	mu.Lock()
+	defer mu.Unlock()
+	tokenBlacklist[token] = true
+}
+
+// IsTokenBlacklisted checks if a token is in the blacklist
+func IsTokenBlacklisted(token string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return tokenBlacklist[token]
+}
+
 // JWTMiddleware is used to protect routes
 func JWTMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -51,6 +72,13 @@ func JWTMiddleware() fiber.Handler {
 		// Remove "Bearer " prefix if present
 		if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
 			tokenString = tokenString[7:]
+		}
+
+		// Check if token is blacklisted
+		if IsTokenBlacklisted(tokenString) {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"message": "Unauthorized: Token has been invalidated",
+			})
 		}
 
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {

@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+//PANGGAWA LEAVE REQUEST
 func CreateLeaveRequest(c *fiber.Ctx) error {
 	internIDStr := c.FormValue("intern_id")
 	internId, err := strconv.Atoi(internIDStr)

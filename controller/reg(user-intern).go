@@ -44,6 +44,7 @@ func CreateRole(c *fiber.Ctx) error {
 	})
 }
 
+//ADD NEW USER
 func CreateUser(c *fiber.Ctx) error {
 	user := new(model.User)
 	if err := c.BodyParser(user); err != nil {
@@ -264,7 +265,7 @@ func EditSupervisor(c *fiber.Ctx) error {
 	})
 }
 
-// GET ALL DATA OF INTERNS
+// GET ALL DATA OF SUPERVISOR
 func GetAllSupervisor(c *fiber.Ctx) error {
 	getAllSupervisor := []model.Intern{}
 
@@ -283,7 +284,7 @@ func GetAllSupervisor(c *fiber.Ctx) error {
 	})
 }
 
-// GET SINGLE INTERN
+// GET SINGLE SUPERVISOR
 func GetSingleSupervisor(c *fiber.Ctx) error {
 	id := c.Params("id") // Retrieve the ID from the route parameters
 
@@ -333,6 +334,37 @@ func ArchiveSupervisor(c *fiber.Ctx) error {
 		Message: "Supervisor successfully archived.",
 	})
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // func validatePassword(password string) error {
 // 	var passwordRegex = `^[A-Za-z\d@$!%*?&]{8,}$`

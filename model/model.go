@@ -44,6 +44,7 @@ type Intern struct {
 	gorm.Model
 	CustomInternID   *string `json:"custom_intern_id" gorm:"unique;default:null"`
 	UserID           uint    `json:"user_id"`
+	ProfilePicture   string  `json:"profile_picture"`
 	StudentID        string  `json:"student_id"`
 	SchoolName       string  `json:"school_name"`
 	SupervisorID     uint    `json:"supervisor_id"`

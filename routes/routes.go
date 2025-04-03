@@ -36,14 +36,15 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Get("/user/get/supervisor/:id", controller.GetSingleSupervisor) //get single intern
 
 	//archive data
-	internTrack.Put("/user/archive/intern/:id", controller.ArchiveIntern)         //get single intern
-	internTrack.Put("/user/archive/supervisor/:id", controller.ArchiveSupervisor) //get single supervisor
+	internTrack.Put("/user/archive/intern/:id", controller.ArchiveIntern)         //INTERNS
+	internTrack.Put("/user/archive/supervisor/:id", controller.ArchiveSupervisor)    //SUPERVISORS
 
 	//Intern Registrtation
 	app.Post("/user/intern/create", controller.InsertAllDataIntern)
 
 	//login
 	app.Post("/login", controller.Login)
+	internTrack.Post("/logout/", controller.Logout)
 
 	//Add leave request
 	internTrack.Post("/leave-request/upload", controller.CreateLeaveRequest)
@@ -53,6 +54,11 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Get("/search/:name", controller.SearchInternByName)
 
 	//change status
-	app.Put("/user/status/intern/:ids", controller.ApproveInterns)
-	internTrack.Put("/leave-request/status/:id", controller.ApproveLeaveRequest)
+	internTrack.Put("/user/status/intern/:ids", controller.ApproveInterns)					//INTERNS
+	internTrack.Put("/leave-request/status/:id", controller.ApproveLeaveRequest) 		//LEAVE REQUESTS
+
+	//PROFILE PICTURE
+	internTrack.Post("/user/upload/profile-picture/:id", controller.UploadProfilePicture) 		//UPLOAD PROFILE PICTURE
+	internTrack.Get("/user/profile-picture/:id", controller.GetInternProfilePicture) 		//VIEW PROFILE PICTURE
+	internTrack.Put("/user/update/profile-picture/:id", controller.UpdateProfilePicture)	//UPDATE PROFILE	
 }

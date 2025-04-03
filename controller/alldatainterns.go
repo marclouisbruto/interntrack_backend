@@ -1,11 +1,15 @@
 package controller
 
 import (
+
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
+	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +32,7 @@ func hashPassword(password string) (string, error) {
 	return string(hashedPassword), nil
 }
 
+//REGISTER INTERNS
 func InsertAllDataIntern(c *fiber.Ctx) error {
 	req := new(InternRequest)
 	if err := c.BodyParser(req); err != nil {
@@ -130,6 +135,7 @@ func EditIntern(c *fiber.Ctx) error {
 	})
 }
 
+//GET ALL INTERNS
 func GetAllInterns(c *fiber.Ctx) error {
 	getAllInterns := []model.Intern{}
 	if err := middleware.DBConn.Preload("User").Find(&getAllInterns).Error; err != nil {
@@ -145,6 +151,7 @@ func GetAllInterns(c *fiber.Ctx) error {
 	})
 }
 
+//SINGLE INTERN
 func GetSingleIntern(c *fiber.Ctx) error {
 	id := c.Params("id")
 	singleIntern := new(model.Intern)
@@ -165,6 +172,7 @@ func GetSingleIntern(c *fiber.Ctx) error {
 	})
 }
 
+//ARCHIVE
 func ArchiveIntern(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -267,6 +275,7 @@ func SearchInternByName(c *fiber.Ctx) error {
 	})
 }
 
+//CUSTOM INTERNID GENERATOR
 func generateInternID(db *gorm.DB) (string, error) {
 	var lastIntern model.Intern
 	var lastID int
@@ -304,4 +313,141 @@ func generateInternID(db *gorm.DB) (string, error) {
 	newInternID := fmt.Sprintf("Intern-%d-%03d", currentYear, lastID)
 
 	return newInternID, nil
+}
+
+//PANG UPLOAD NG PROFILE PICTURE
+func UploadProfilePicture(c *fiber.Ctx) error {
+    internId := c.Params("id")
+
+    file, err := c.FormFile("profile_picture")
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+            "message": "Profile picture is required",
+        })
+    }
+
+    // Validate file type (only PNG and JPG allowed)
+    ext := strings.ToLower(filepath.Ext(file.Filename))
+    if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+            "message": "Invalid file format. Only PNG and JPG allowed.",
+        })
+    }
+
+    // Open the uploaded file
+    fileContent, err := file.Open()
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "message": "Failed to read file",
+        })
+    }
+    defer fileContent.Close()
+
+    // Read the file into a byte slice
+    imageBytes, err := io.ReadAll(fileContent)
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "message": "Failed to read file content",
+        })
+    }
+
+    // Encode file content to base64 once
+    base64Image := base64.StdEncoding.EncodeToString(imageBytes)
+
+    // Update the interns table with the base64 encoded image
+    if err := middleware.DBConn.Table("interns").Where("id = ?", internId).Update("profile_picture", base64Image).Error; err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "message": "Failed to upload profile picture",
+        })
+    }
+
+    return c.JSON(fiber.Map{
+        "message":   "Profile picture uploaded successfully",
+        "intern_id": internId,
+    })
+}
+
+//UPDATE PROFILE
+func UpdateProfilePicture(c *fiber.Ctx) error {
+    internId := c.Params("id")
+
+    file, err := c.FormFile("profile_picture")
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+            "message": "Profile picture is required",
+        })
+    }
+
+    // Validate file type (only PNG and JPG allowed)
+    ext := strings.ToLower(filepath.Ext(file.Filename))
+    if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+            "message": "Invalid file format. Only PNG and JPG allowed.",
+        })
+    }
+
+    // Open the uploaded file
+    fileContent, err := file.Open()
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "message": "Failed to read file",
+        })
+    }
+    defer fileContent.Close()
+
+    // Read the file into a byte slice
+    imageBytes, err := io.ReadAll(fileContent)
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "message": "Failed to read file content",
+        })
+    }
+
+    // Encode file content to base64
+    base64Image := base64.StdEncoding.EncodeToString(imageBytes)
+
+    // Update the interns table with the new profile picture
+    if err := middleware.DBConn.Table("interns").Where("id = ?", internId).Update("profile_picture", base64Image).Error; err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "message": "Failed to update profile picture",
+        })
+    }
+
+    return c.JSON(fiber.Map{
+        "message":   "Profile picture updated successfully",
+        "intern_id": internId,
+    })
+}
+
+
+//PANG RETRIEVE NG PROFILE PICTURE AS BASE64
+func GetInternProfilePicture(c *fiber.Ctx) error {
+	id := c.Params("id") // Kunin ang intern ID mula sa URL parameter
+
+	// Struct para sa intern profile
+	var intern model.Intern
+
+	// Hanapin ang intern sa database at kunin ang profile_picture
+	err := middleware.DBConn.Model(&model.Intern{}).Select("profile_picture").Where("id = ?", id).First(&intern).Error
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"message": "Intern not found or no profile picture available",
+			"error":   err.Error(),
+		})
+	}
+
+	// Kung walang profile picture, magbalik ng error
+	if intern.ProfilePicture == "" {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"message": "No profile picture found",
+		})
+	}
+
+	// Ibalik ang Base64 na image bilang JSON response
+	return c.JSON(fiber.Map{
+		"message": "Profile picture retrieved successfully",
+		"data": fiber.Map{
+			"base64": intern.ProfilePicture,
+		},
+	})
 }
