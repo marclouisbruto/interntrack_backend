@@ -53,6 +53,6 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Get("/search/:name", controller.SearchInternByName)
 
 	//change status
-	internTrack.Put("/user/status/intern/:ids", controller.ApproveInterns)
+	app.Put("/user/status/intern/:ids", controller.ApproveInterns)
 	internTrack.Put("/leave-request/status/:id", controller.ApproveLeaveRequest)
 }

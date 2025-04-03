@@ -42,15 +42,16 @@ type Supervisor struct {
 
 type Intern struct {
 	gorm.Model
-	UserID           uint   `json:"user_id"`
-	StudentID        string `json:"student_id"`
-	SchoolName       string `json:"school_name"`
-	SupervisorID     uint   `json:"supervisor_id"`
-	Course           string `json:"course"`
-	OjtHoursRequired int    `json:"ojt_hours_required"`
-	OjtHoursRendered int    `json:"ojt_hours_rendered"`
-	Status           string `json:"status"`
-	Address          string `json:"address"`
+	CustomInternID   *string `json:"custom_intern_id" gorm:"unique;default:null"`
+	UserID           uint    `json:"user_id"`
+	StudentID        string  `json:"student_id"`
+	SchoolName       string  `json:"school_name"`
+	SupervisorID     uint    `json:"supervisor_id"`
+	Course           string  `json:"course"`
+	OjtHoursRequired int     `json:"ojt_hours_required"`
+	OjtHoursRendered int     `json:"ojt_hours_rendered"`
+	Status           string  `json:"status"`
+	Address          string  `json:"address"`
 
 	User       User       `gorm:"foreignKey:UserID"`
 	Supervisor Supervisor `gorm:"foreignKey:SupervisorID"`

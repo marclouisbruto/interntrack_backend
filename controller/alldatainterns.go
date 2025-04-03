@@ -1,12 +1,14 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
-	"log"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"golang.org/x/crypto/bcrypt"
@@ -199,42 +201,39 @@ func ApproveInterns(c *fiber.Ctx) error {
 	idList := strings.Split(internIDs, ",")
 
 	// Check if the interns exist and their status is pending
-	var interns []struct {
-		ID     uint   `json:"id"`
-		Status string `json:"status"`
-	}
-
-	// Find all interns by their IDs
+	var interns []model.Intern
 	if err := middleware.DBConn.Table("interns").
-		Select("id, status").
-		Where("id IN (?)", idList).
+		Where("id IN ? AND status = ?", idList, "Pending").
 		Find(&interns).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Interns not found",
+			"error": "Some interns not found or not in 'Pending' status",
 		})
 	}
 
-	// Ensure all interns are in pending status
+	// Loop through each intern and update their status and intern ID
 	for _, intern := range interns {
-		if intern.Status != "Pending" {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-				"error": fmt.Sprintf("Intern with ID %d is not in 'Pending' status", intern.ID),
+		// Generate custom intern ID
+		internID, err := generateInternID(middleware.DBConn)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to generate intern ID",
+			})
+		}
+
+		// Update intern status and assign generated intern ID
+		if err := middleware.DBConn.Model(&intern).
+			Updates(map[string]interface{}{
+				"status":           "Approved",
+				"custom_intern_id": internID,
+			}).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("Failed to update intern with ID %d", intern.ID),
 			})
 		}
 	}
 
-	// Update status to "Approved" for all interns
-	if err := middleware.DBConn.Table("interns").
-		Where("id IN (?)", idList).
-		Update("status", "Approved").Error; err != nil {
-		log.Println("Failed to update intern status:", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to update status",
-		})
-	}
-
 	return c.JSON(fiber.Map{
-		"message": fmt.Sprintf("Interns with IDs [%s] updated to 'Approved' successfully", internIDs),
+		"message": fmt.Sprintf("Interns with IDs [%s] approved and assigned IDs successfully", internIDs),
 	})
 }
 
@@ -266,4 +265,43 @@ func SearchInternByName(c *fiber.Ctx) error {
 		Message: "Interns retrieved successfully.",
 		Data:    interns,
 	})
+}
+
+func generateInternID(db *gorm.DB) (string, error) {
+	var lastIntern model.Intern
+	var lastID int
+	currentYear := time.Now().Year() // Get the current year
+
+	// Find the latest custom intern ID for the current year
+	if err := db.Table("interns").
+		Select("custom_intern_id").
+		Where("custom_intern_id LIKE ?", fmt.Sprintf("Intern-%d-%%", currentYear)).
+		Order("custom_intern_id DESC").
+		First(&lastIntern).Error; err != nil {
+		// If no previous ID exists for this year, start from 1
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			lastID = 1
+		} else {
+			return "", err
+		}
+	} else if lastIntern.CustomInternID != nil { // Check if not nil before processing
+		// Extract the last number (XXX part) and increment
+		parts := strings.Split(*lastIntern.CustomInternID, "-")
+		if len(parts) < 3 {
+			return "", fmt.Errorf("invalid ID format: %s", *lastIntern.CustomInternID)
+		}
+
+		lastDigit, err := strconv.Atoi(parts[2]) // Extract the XXX part
+		if err != nil {
+			return "", fmt.Errorf("failed to parse last sequence number: %v", err)
+		}
+		lastID = lastDigit + 1
+	} else {
+		lastID = 1
+	}
+
+	// Format the new custom intern ID
+	newInternID := fmt.Sprintf("Intern-%d-%03d", currentYear, lastID)
+
+	return newInternID, nil
 }
