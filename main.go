@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"intern_template_v1/middleware"
 	"intern_template_v1/routes"
+	"intern_template_v1/config"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -47,4 +48,6 @@ func main() {
 
 	// Start Server
 	app.Listen(fmt.Sprintf(":%s", middleware.GetEnv("PROJ_PORT")))
+
+	config.InitializeFirebase() // Initialize Firebase at app startup
 }

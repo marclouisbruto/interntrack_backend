@@ -4,12 +4,12 @@ import (
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
-	
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
-
 
 func Login(c *fiber.Ctx) error {
 	type LoginRequest struct {
@@ -55,65 +55,59 @@ func Login(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check roleid and return appropriate response
-	if user.RoleID == 1 {
-		// Admin login
-		return c.JSON(response.ResponseModel{
-			RetCode: "200",
-			Message: "Admin login successful",
-			Data: fiber.Map{
-				"token": token,
-				"user": fiber.Map{
-					"id":       user.ID,
-					"email":    user.Email,
-					"role":     "Supervisor",
-				},
-			},
-		})
-	} else if user.RoleID == 2 {
-		// Regular user login
-		return c.JSON(response.ResponseModel{
-			RetCode: "200",
-			Message: "User login successful",
-			Data: fiber.Map{
-				"token": token,
-				"user": fiber.Map{
-					"id":           user.ID,
-					"email":        user.Email,
-					"role":         "Intern",
-				},
-			},
+	// Set cookie
+	c.Cookie(&fiber.Cookie{
+		Name:     "jwt",
+		Value:    token,
+		Expires:  time.Now().Add(24 * time.Hour),
+		HTTPOnly: true, // Prevent JavaScript access
+		Secure:   true, // Use true in production with HTTPS
+		SameSite: "Lax",
+	})
+
+	// Role-based message
+	role := ""
+	message := ""
+	switch user.RoleID {
+	case 1:
+		role = "Supervisor"
+		message = "Admin login successful"
+	case 2:
+		role = "Intern"
+		message = "User login successful"
+	default:
+		return c.Status(fiber.StatusUnauthorized).JSON(response.ResponseModel{
+			RetCode: "401",
+			Message: "Unauthorized role",
 		})
 	}
 
-	// If roleid is neither 1 nor 2, return unauthorized
-	return c.Status(fiber.StatusUnauthorized).JSON(response.ResponseModel{
-		RetCode: "401",
-		Message: "Unauthorized role",
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: message,
+		Data: fiber.Map{
+			"user": fiber.Map{
+				"id":    user.ID,
+				"email": user.Email,
+				"role":  role,
+			},
+		},
 	})
 }
+
 
 func Logout(c *fiber.Ctx) error {
-	token := c.Get("Authorization")
-	if token == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"message": "No token provided",
-		})
-	}
-
-	// Remove "Bearer " prefix
-	if len(token) > 7 && token[:7] == "Bearer " {
-		token = token[7:]
-	}
-
-	// Blacklist the token
-	middleware.BlacklistToken(token)
+	// Clear the cookie
+	c.Cookie(&fiber.Cookie{
+		Name:     "jwt",
+		Value:    "",
+		Expires:  time.Now().Add(-time.Hour), // Expire it
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+	})
 
 	return c.JSON(fiber.Map{
-		"message": "Logout successful. Token is now invalidated.",
+		"message": "Logout successful. Token removed from cookies.",
 	})
 }
-
-
-
-

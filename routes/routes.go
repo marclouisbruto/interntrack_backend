@@ -23,7 +23,7 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Post("/user/:id/create-supervisor", controller.CreateSuperVisor)
 
 	//FOR USER REGISTRATION
-	app.Post("/user/insert", controller.CreateUser)
+	internTrack.Post("/user/insert", controller.CreateUser)
 
 	//Edit intern and supersivor
 	internTrack.Put("/user/:id/edit-supervisor", controller.EditSupervisor)
@@ -37,15 +37,22 @@ func AppRoutes(app *fiber.App) {
 
 	//archive data
 	internTrack.Put("/user/archive/intern/:id", controller.ArchiveIntern)         //INTERNS
-	internTrack.Put("/user/archive/supervisor/:id", controller.ArchiveSupervisor)    //SUPERVISORS
+	internTrack.Put("/user/archive/supervisor/:id", controller.ArchiveSupervisor) //SUPERVISORS
 
 	//Intern Registrtation
 	app.Post("/user/intern/create", controller.InsertAllDataIntern)
 
-	//login
+	//LOGIN PAGE
 	app.Post("/login", controller.Login)
 	internTrack.Post("/logout/", controller.Logout)
 
+
+	// FORGOT PASSWORD
+	app.Post("/forgot-password", controller.ForgotPassword)
+	app.Post("/verify-code", controller.VerifyResetCode)
+	app.Post("/reset-password", controller.ResetPassword)
+
+	
 	//Add leave request
 	internTrack.Post("/leave-request/upload", controller.CreateLeaveRequest)
 	internTrack.Static("/uploads/excuse_letters", "./uploads/excuse_letters") //tumutulong sa pang view or pathing ng image
@@ -54,11 +61,11 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Get("/search/:name", controller.SearchInternByName)
 
 	//change status
-	internTrack.Put("/user/status/intern/:ids", controller.ApproveInterns)					//INTERNS
-	internTrack.Put("/leave-request/status/:id", controller.ApproveLeaveRequest) 		//LEAVE REQUESTS
+	internTrack.Put("/user/status/intern/:ids", controller.ApproveInterns)       //INTERNS
+	internTrack.Put("/leave-request/status/:id", controller.ApproveLeaveRequest) //LEAVE REQUESTS
 
 	//PROFILE PICTURE
-	internTrack.Post("/user/upload/profile-picture/:id", controller.UploadProfilePicture) 		//UPLOAD PROFILE PICTURE
-	internTrack.Get("/user/profile-picture/:id", controller.GetInternProfilePicture) 		//VIEW PROFILE PICTURE
-	internTrack.Put("/user/update/profile-picture/:id", controller.UpdateProfilePicture)	//UPDATE PROFILE	
+	internTrack.Post("/user/upload/profile-picture/:id", controller.UploadProfilePicture) //UPLOAD PROFILE PICTURE
+	internTrack.Get("/user/profile-picture/:id", controller.GetInternProfilePicture)      //VIEW PROFILE PICTURE
+	internTrack.Put("/user/update/profile-picture/:id", controller.UpdateProfilePicture)  //UPDATE PROFILE
 }

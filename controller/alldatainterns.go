@@ -45,7 +45,10 @@ func InsertAllDataIntern(c *fiber.Ctx) error {
 
 	hashedPassword, err := hashPassword(req.User.Password)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Failed to hash password", "error": err.Error()})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to hash password",
+			"error":   err.Error(),
+		})
 	}
 	req.User.Password = hashedPassword
 
@@ -63,8 +66,11 @@ func InsertAllDataIntern(c *fiber.Ctx) error {
 			return err
 		}
 
-		// Link intern to user
+		// Set user_id on intern
 		req.Intern.UserID = req.User.ID
+
+		// ✅ Ensure school name and course are saved regardless if they're new or selected from dropdown
+		// (No extra processing needed if the frontend sends plain string values)
 
 		// Insert intern
 		if err := tx.Create(&req.Intern).Error; err != nil {
@@ -75,13 +81,17 @@ func InsertAllDataIntern(c *fiber.Ctx) error {
 	})
 
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Transaction failed", "error": err.Error()})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Transaction failed",
+			"error":   err.Error(),
+		})
 	}
 
 	if err := middleware.DBConn.Preload("Role").First(&req.User, req.User.ID).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Failed to retrieve user with role",
-			"error":   err.Error()})
+			"error":   err.Error(),
+		})
 	}
 
 	return c.JSON(response.ResponseModel{
@@ -90,6 +100,7 @@ func InsertAllDataIntern(c *fiber.Ctx) error {
 		Data:    req,
 	})
 }
+
 
 // EDIT INTERNS' DATA
 func EditIntern(c *fiber.Ctx) error {
@@ -197,18 +208,16 @@ func ArchiveIntern(c *fiber.Ctx) error {
 
 // PANG APPROVE NG INTERN
 func ApproveInterns(c *fiber.Ctx) error {
-	// Extract intern IDs from URL param or body (assuming comma-separated values)
-	internIDs := c.Params("ids") // Example: "1,2,3" for multiple IDs
+	internIDs := c.Params("ids") // Example: "1,2,3"
 	if internIDs == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Intern IDs are required",
 		})
 	}
 
-	// Split intern IDs into a slice
 	idList := strings.Split(internIDs, ",")
 
-	// Check if the interns exist and their status is pending
+	// Get interns with pending status
 	var interns []model.Intern
 	if err := middleware.DBConn.Table("interns").
 		Where("id IN ? AND status = ?", idList, "Pending").
@@ -218,7 +227,6 @@ func ApproveInterns(c *fiber.Ctx) error {
 		})
 	}
 
-	// Loop through each intern and update their status and intern ID
 	for _, intern := range interns {
 		// Generate custom intern ID
 		internID, err := generateInternID(middleware.DBConn)
@@ -228,7 +236,7 @@ func ApproveInterns(c *fiber.Ctx) error {
 			})
 		}
 
-		// Update intern status and assign generated intern ID
+		// Update intern status and custom intern ID
 		if err := middleware.DBConn.Model(&intern).
 			Updates(map[string]interface{}{
 				"status":           "Approved",
@@ -238,10 +246,29 @@ func ApproveInterns(c *fiber.Ctx) error {
 				"error": fmt.Sprintf("Failed to update intern with ID %d", intern.ID),
 			})
 		}
+
+		// ✅ Fetch FCM token (adjust query if stored in separate table)
+		var fcmToken string
+		err = middleware.DBConn.Table("interns").
+			Select("fcm_token").
+			Where("id = ?", intern.ID).
+			Scan(&fcmToken).Error
+
+		if err != nil || fcmToken == "" {
+			fmt.Printf("⚠️ FCM token not found for intern ID %d, skipping notification\n", intern.ID)
+			continue
+		}
+
+		// ✅ Send Firebase notification
+		title := "Internship Approved"
+		body := fmt.Sprintf("Congratulations %s! Your internship request has been approved.", intern.User.FirstName)
+		if err := SendPushNotification(fcmToken, title, body); err != nil {
+			fmt.Printf("⚠️ Failed to send notification to intern ID %d: %v\n", intern.ID, err)
+		}
 	}
 
 	return c.JSON(fiber.Map{
-		"message": fmt.Sprintf("Interns with IDs [%s] approved and assigned IDs successfully", internIDs),
+		"message": fmt.Sprintf("Interns with IDs [%s] approved and notified successfully", internIDs),
 	})
 }
 

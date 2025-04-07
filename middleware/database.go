@@ -38,7 +38,7 @@ func MigrateDB() {
 		return
 	}
 
-	err := DBConn.AutoMigrate(&model.User{}, &model.Supervisor{}, &model.Role{}, &model.Intern{}, &model.QRCode{}, &model.DTREntry{}, &model.LeaveRequest{}) // Add more models if needed
+	err := DBConn.AutoMigrate(&model.User{}, &model.Supervisor{}, &model.Role{}, &model.Intern{}, &model.QRCode{}, &model.DTREntry{}, &model.LeaveRequest{}, &model.TokenRequest{}) // Add more models if needed
 	if err != nil {
 		log.Fatal("Migration failed:", err)
 	} else {

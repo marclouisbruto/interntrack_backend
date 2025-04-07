@@ -129,10 +129,18 @@ func CreateIntern(c *fiber.Ctx) error {
 		})
 	}
 
+	// Create a new instance of Intern and parse the body
 	intern := new(model.Intern)
 	if err := c.BodyParser(intern); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": err,
+		})
+	}
+
+	// Ensure the school_name and course are being passed in and set correctly
+	if intern.SchoolName == "" || intern.Course == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "School Name and Course are required",
 		})
 	}
 
@@ -151,6 +159,7 @@ func CreateIntern(c *fiber.Ctx) error {
 
 	intern.UserID = uint(userID)
 
+	// Create the intern record in the database
 	if err := middleware.DBConn.Create(intern).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Failed to create Intern info",
@@ -158,7 +167,7 @@ func CreateIntern(c *fiber.Ctx) error {
 		})
 	}
 
-	// Reload with Preload to load relations
+	// Reload with Preload to load relations like Supervisor
 	if err := middleware.DBConn.Preload("Supervisor").First(&intern, intern.ID).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Failed to load related data",
@@ -166,12 +175,14 @@ func CreateIntern(c *fiber.Ctx) error {
 		})
 	}
 
+	// Return a successful response
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
 		Message: "Intern successfully created",
 		Data:    intern,
 	})
 }
+
 
 // ADD NEW SUPERVISOR
 func CreateSuperVisor(c *fiber.Ctx) error {

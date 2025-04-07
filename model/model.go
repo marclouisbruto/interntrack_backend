@@ -2,11 +2,13 @@ package model
 
 import "gorm.io/gorm"
 
-type (
-	SampleModel struct {
-		Name string `json:"name"`
-	}
-)
+type TokenRequest struct {
+	gorm.Model
+	InternID string `json:"intern_id"`
+	Token    string `json:"token"`
+
+	Intern Intern `gorm:"foreignKey:InternID"`
+}
 
 type Role struct {
 	gorm.Model
@@ -62,8 +64,10 @@ type Intern struct {
 
 type QRCode struct {
 	gorm.Model
-	InternID uint   `json:"intern_id"`
-	QRCode   string `json:"qrcode"`
+	ID           uint   `gorm:"primaryKey"`
+	InternID     uint   `gorm:"index"`
+	QRCode       string `gorm:"type:text"` // This will store the QR code content
+	Base64QRCode string `gorm:"type:text"` // This will store the base64 QR code
 
 	Intern Intern `gorm:"foreignKey:InternID"`
 }
