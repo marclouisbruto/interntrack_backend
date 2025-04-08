@@ -125,34 +125,64 @@ func ViewExcuseLetter(c *fiber.Ctx) error {
 
 // PANG APPROVE NG LEAVE REQUEST
 func ApproveLeaveRequest(c *fiber.Ctx) error {
-	leaveRequestID := c.Params("id") // Extract intern_id from URL param
+	leaveRequestID := c.Params("id") // Extract leave request ID from URL param
 
-	// Check if the leave requests exists and status is pending
-	var intern struct {
-		Status string
+	// Get the leave request details including intern ID and status
+	var leaveRequest struct {
+		ID       uint
+		InternID uint
+		Status   string
 	}
-	if err := middleware.DBConn.Table("leave_requests").Select("status").Where("id = ?", leaveRequestID).First(&intern).Error; err != nil {
+	if err := middleware.DBConn.Table("leave_requests").
+		Select("id, intern_id, status").
+		Where("id = ?", leaveRequestID).
+		First(&leaveRequest).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Leave request not found",
 		})
 	}
 
-	// Ensure we are only approving pending interns
-	if intern.Status != "Pending" {
+	// Check status
+	if leaveRequest.Status != "Pending" {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
 			"error": "Leave request status is not pending",
 		})
 	}
 
-	// Update the status
-	if err := middleware.DBConn.Table("leave_requests").Where("id = ?", leaveRequestID).Update("status", "Approved").Error; err != nil {
+	// Approve the request
+	if err := middleware.DBConn.Table("leave_requests").
+		Where("id = ?", leaveRequestID).
+		Update("status", "Approved").Error; err != nil {
 		log.Println("Failed to update leave request status:", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update status",
 		})
 	}
 
+	// 🔔 Fetch FCM token and intern's name
+	var fcmData struct {
+		FCMToken   string
+		FirstName  string
+	}
+	err := middleware.DBConn.Table("interns").
+		Select("fcm_token, users.first_name").
+		Joins("JOIN users ON users.users_id = interns.id").
+		Where("interns.intern_id = ?", leaveRequest.InternID).
+		Scan(&fcmData).Error
+
+	if err != nil || fcmData.FCMToken == "" {
+		log.Printf("⚠️ FCM token not found for intern ID %d, skipping notification\n", leaveRequest.InternID)
+	} else {
+		// 🔥 Send Firebase notification
+		title := "Leave Request Approved"
+		body := fmt.Sprintf("Hi %s, your leave request has been approved.", fcmData.FirstName)
+		if err := SendPushNotification(fcmData.FCMToken, title, body); err != nil {
+			log.Printf("⚠️ Failed to send notification to intern ID %d: %v\n", leaveRequest.InternID, err)
+		}
+	}
+
 	return c.JSON(fiber.Map{
-		"message": "Leave requests status updated successfully",
+		"message": "Leave request status updated and notification sent",
 	})
 }
+

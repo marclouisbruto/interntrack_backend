@@ -129,22 +129,22 @@ func CreateIntern(c *fiber.Ctx) error {
 		})
 	}
 
-	// Create a new instance of Intern and parse the body
+	// Parse the body into intern
 	intern := new(model.Intern)
 	if err := c.BodyParser(intern); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": err,
+			"message": err.Error(),
 		})
 	}
 
-	// Ensure the school_name and course are being passed in and set correctly
+	// Validate required fields
 	if intern.SchoolName == "" || intern.Course == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "School Name and Course are required",
 		})
 	}
 
-	// Confirm if the user exists and is an intern role
+	// Check if user exists and has the correct role
 	var user model.User
 	if err := middleware.DBConn.First(&user, userID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -157,17 +157,31 @@ func CreateIntern(c *fiber.Ctx) error {
 		})
 	}
 
+	// Set user_id
 	intern.UserID = uint(userID)
 
-	// Create the intern record in the database
+	// Set default status to Approved
+	intern.Status = "Approved"
+
+	// Generate custom intern ID
+	customID, err := generateInternID(middleware.DBConn)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to generate custom intern ID",
+			"error":   err.Error(),
+		})
+	}
+	intern.CustomInternID = &customID
+
+	// Insert intern data
 	if err := middleware.DBConn.Create(intern).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Failed to create Intern info",
+			"message": "Failed to create intern record",
 			"error":   err.Error(),
 		})
 	}
 
-	// Reload with Preload to load relations like Supervisor
+	// Load with relations if needed (Supervisor)
 	if err := middleware.DBConn.Preload("Supervisor").First(&intern, intern.ID).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Failed to load related data",
@@ -175,13 +189,13 @@ func CreateIntern(c *fiber.Ctx) error {
 		})
 	}
 
-	// Return a successful response
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
-		Message: "Intern successfully created",
+		Message: "Intern successfully created with Approved status",
 		Data:    intern,
 	})
 }
+
 
 
 // ADD NEW SUPERVISOR

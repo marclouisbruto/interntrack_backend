@@ -40,7 +40,7 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Put("/user/archive/supervisor/:id", controller.ArchiveSupervisor) //SUPERVISORS
 
 	//Intern Registrtation
-	app.Post("/user/intern/create", controller.InsertAllDataIntern)
+	app.Post("/user/intern/create", controller.RegisterIntern)
 
 	//LOGIN PAGE
 	app.Post("/login", controller.Login)
