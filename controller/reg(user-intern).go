@@ -44,7 +44,7 @@ func CreateRole(c *fiber.Ctx) error {
 	})
 }
 
-//ADD NEW USER
+// ADD NEW USER
 func CreateUser(c *fiber.Ctx) error {
 	user := new(model.User)
 	if err := c.BodyParser(user); err != nil {
@@ -196,8 +196,6 @@ func CreateIntern(c *fiber.Ctx) error {
 	})
 }
 
-
-
 // ADD NEW SUPERVISOR
 func CreateSuperVisor(c *fiber.Ctx) error {
 	superId, err := strconv.Atoi(c.Params("id"))
@@ -210,23 +208,24 @@ func CreateSuperVisor(c *fiber.Ctx) error {
 	supervisor := new(model.Supervisor)
 	if err := c.BodyParser(supervisor); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": err,
+			"message": err.Error(),
 		})
 	}
 
-	// Validate that the user exists and has role_id = 1 (Super Visor)
+	// Validate that the user exists and has role_id = 1 (Supervisor) or 3 (Adviser_OJT)
 	var user model.User
 	if err := middleware.DBConn.First(&user, superId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"message": "User not found",
 		})
 	}
-	if user.RoleID != 1 {
+	if user.RoleID != 1 && user.RoleID != 3 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "This user is not a Super Visor!",
+			"message": "This user is not allowed to be a supervisor or handler!",
 		})
 	}
 
+	// Check if supervisor already exists
 	var existingSupervisor model.Supervisor
 	if err := middleware.DBConn.Where("user_id = ?", superId).First(&existingSupervisor).Error; err == nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -234,18 +233,19 @@ func CreateSuperVisor(c *fiber.Ctx) error {
 		})
 	}
 
-	// Assign the userID from params to handler
+	// Assign values
 	supervisor.UserID = uint(superId)
+	supervisor.Status = "Approved" // Default status
 
 	if err := middleware.DBConn.Create(supervisor).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Failed to create Super Visor info",
+			"message": "Failed to create Supervisor info",
 		})
 	}
 
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
-		Message: "Super Visor successfully created",
+		Message: "Supervisor successfully created",
 		Data:    supervisor,
 	})
 }
@@ -360,12 +360,33 @@ func ArchiveSupervisor(c *fiber.Ctx) error {
 	})
 }
 
+// SORT BY HANDLE NG SUPERVISORS/HANDLERS
+func GetInternsBySupervisorID(c *fiber.Ctx) error {
+	supervisorID := c.Params("supervisor_id")
 
+	if supervisorID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Supervisor ID is required",
+		})
+	}
 
+	var interns []model.Intern
+	if err := middleware.DBConn.
+		Where("supervisor_id = ?", supervisorID).
+		Preload("User").
+		Find(&interns).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to retrieve interns for supervisor",
+			"error":   err.Error(),
+		})
+	}
 
-
-
-
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Interns retrieved successfully for the supervisor.",
+		Data:    interns,
+	})
+}
 
 
 

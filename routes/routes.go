@@ -58,7 +58,7 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Static("/uploads/excuse_letters", "./uploads/excuse_letters") //tumutulong sa pang view or pathing ng image
 	internTrack.Get("/view-excuse-letter/:filename", controller.ViewExcuseLetter)
 
-	internTrack.Get("/search/:name", controller.SearchInternByName)
+	internTrack.Get("/interns/search/:value", controller.SearchInternsByParam)
 
 	//change status
 	internTrack.Put("/user/status/intern/:ids", controller.ApproveInterns)       //INTERNS
@@ -68,4 +68,8 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Post("/user/upload/profile-picture/:id", controller.UploadProfilePicture) //UPLOAD PROFILE PICTURE
 	internTrack.Get("/user/profile-picture/:id", controller.GetInternProfilePicture)      //VIEW PROFILE PICTURE
 	internTrack.Put("/user/update/profile-picture/:id", controller.UpdateProfilePicture)  //UPDATE PROFILE
+
+
+	//try endpoint
+	internTrack.Get("/getinterns/handler/:supervisor_id", controller.GetInternsBySupervisorID)
 }

@@ -271,21 +271,26 @@ func ApproveInterns(c *fiber.Ctx) error {
 }
 
 // SEARCH NG INTERNS
-func SearchInternByName(c *fiber.Ctx) error {
-	name := c.Params("name") // Get the name from the URL parameter
+func SearchInternsByParam(c *fiber.Ctx) error {
+	value := c.Params("value")
 
-	if name == "" {
+	if value == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "Name parameter is required",
+			"message": "Search value is required",
 		})
 	}
 
-	var interns []model.User // Searching in the users table
+	var interns []model.Intern
 
-	// Filter users with role = 2 (Intern) and match name
 	if err := middleware.DBConn.
-		Where("role_id = ?", 2). // Ensure only interns are retrieved
-		Where("CONCAT(first_name, ' ', last_name) ILIKE ?", "%"+name+"%").Preload("Role").Preload("Intern").
+		Preload("User").
+		Where("school_name ILIKE ? OR id IN (?)",
+			"%"+value+"%",
+			middleware.DBConn.
+				Model(&model.User{}).
+				Select("id").
+				Where("CONCAT(first_name, ' ', last_name) ILIKE ?", "%"+value+"%"),
+		).
 		Find(&interns).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Failed to search interns",
@@ -293,14 +298,14 @@ func SearchInternByName(c *fiber.Ctx) error {
 		})
 	}
 
-	fmt.Println("Fetched profile pic:", interns[6].Intern.ProfilePicture)
-
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
 		Message: "Interns retrieved successfully.",
 		Data:    interns,
 	})
 }
+
+
 
 // CUSTOM INTERNID GENERATOR
 func generateInternID(db *gorm.DB) (string, error) {
