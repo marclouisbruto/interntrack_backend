@@ -38,7 +38,7 @@ func CreateHandler(c *fiber.Ctx) error {
 	}
 	if user.RoleID == 1 || user.RoleID == 2 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "This user is not allowed to be a intern or supervisor!",
+			"message": "This user is not allowed to be an intern or supervisor!",
 		})
 	}
 

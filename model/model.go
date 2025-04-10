@@ -66,7 +66,7 @@ type Intern struct {
 	HandlerID        uint    `json:"handler_id"`
 	Course           string  `json:"course"`
 	OjtHoursRequired int     `json:"ojt_hours_required"`
-	OjtHoursRendered int     `json:"ojt_hours_rendered"`
+	OjtHoursRendered string     `json:"ojt_hours_rendered"`
 	Status           string  `json:"status"`
 	Address          string  `json:"address"`
 
@@ -97,7 +97,7 @@ type DTREntry struct {
 	TimeOutAM    string  `json:"time_out_am"`
 	TimeInPM     string  `json:"time_in_pm"`
 	TimeOutPM    string  `json:"time_out_pm"`
-	TotalHours   float64 `json:"total_hours"`
+	TotalHours   string `json:"total_hours"`
 
 	Intern     Intern     `gorm:"foreignKey:InternID"`
 	Supervisor Supervisor `gorm:"foreignKey:SupervisorID"`

@@ -20,6 +20,11 @@ type SupervisorRequest struct {
 	Supervisor model.Supervisor `json:"supervisor"`
 }
 
+type HandlerRequest struct {
+	User    model.User    `json:"user"`
+	Handler model.Handler `json:"handler"`
+}
+
 // INSERT NEW ROLE
 func CreateRole(c *fiber.Ctx) error {
 	role := new(model.Role)
@@ -43,6 +48,10 @@ func CreateRole(c *fiber.Ctx) error {
 		Data:    role,
 	})
 }
+
+//####################################
+//==========ADD NEW DATA===========
+//####################################
 
 // ADD NEW USER
 func CreateUser(c *fiber.Ctx) error {
@@ -212,16 +221,16 @@ func CreateSuperVisor(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validate that the user exists and has role_id = 1 (Supervisor) or 3 (Adviser_OJT)
+	// Validate that the user exists and has role_id = 1 (Supervisor)
 	var user model.User
 	if err := middleware.DBConn.First(&user, superId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"message": "User not found",
 		})
 	}
-	if user.RoleID != 1 && user.RoleID != 3 {
+	if user.RoleID != 1 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "This user is not allowed to be a supervisor or handler!",
+			"message": "This user is not allowed to be a supervisor!",
 		})
 	}
 
@@ -252,7 +261,7 @@ func CreateSuperVisor(c *fiber.Ctx) error {
 
 // EDIT SUPERVISOR'S DATA
 func EditSupervisor(c *fiber.Ctx) error {
-	id := c.Params("id") // Retrieve the ID from the route parameters
+	id := c.Params("id")
 
 	req := new(SupervisorRequest)
 	if err := c.BodyParser(req); err != nil {
@@ -263,12 +272,12 @@ func EditSupervisor(c *fiber.Ctx) error {
 	}
 
 	err := middleware.DBConn.Transaction(func(tx *gorm.DB) error {
-		// Update user
-		if err := tx.Model(&model.User{}).Where("id = ?", id).Updates(req.Supervisor).Error; err != nil {
+		// Update basic user data (excluding password)
+		if err := tx.Model(&model.User{}).Where("id = ?", id).Omit("password").Updates(req.User).Error; err != nil {
 			return err
 		}
 
-		// Update supervisor
+		// Update supervisor-specific data
 		if err := tx.Model(&model.Supervisor{}).Where("user_id = ?", id).Updates(req.Supervisor).Error; err != nil {
 			return err
 		}
@@ -285,10 +294,56 @@ func EditSupervisor(c *fiber.Ctx) error {
 
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
-		Message: "Intern and User data successfully updated.",
+		Message: "Supervisor and User data successfully updated.",
 		Data:    req,
 	})
 }
+
+// EDIT HANDLER'S DATA
+func EditHandler(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	req := new(HandlerRequest)
+	if err := c.BodyParser(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid request body",
+			"error":   err.Error(),
+		})
+	}
+
+	err := middleware.DBConn.Transaction(func(tx *gorm.DB) error {
+		// Update basic user data (excluding password)
+		if err := tx.Model(&model.User{}).Where("id = ?", id).Omit("password").Updates(req.User).Error; err != nil {
+			return err
+		}
+
+		// Update handler-specific data
+		if err := tx.Model(&model.Handler{}).Where("user_id = ?", id).Updates(req.Handler).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Transaction failed",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Handler and User data successfully updated.",
+		Data:    req,
+	})
+}
+
+
+
+//####################################
+//========RETRIEVE SUPERVISOR========
+//####################################
 
 // GET ALL DATA OF SUPERVISOR
 func GetAllSupervisor(c *fiber.Ctx) error {
@@ -335,31 +390,6 @@ func GetSingleSupervisor(c *fiber.Ctx) error {
 	})
 }
 
-// Archive Supervisor
-func ArchiveSupervisor(c *fiber.Ctx) error {
-	id := c.Params("id") // Retrieve the ID from the route parameters
-
-	err := middleware.DBConn.Transaction(func(tx *gorm.DB) error {
-		// Update Supervisor status to "archived"
-		if err := tx.Model(&model.Supervisor{}).Where("id = ?", id).Update("status", "Archived").Error; err != nil {
-			return err
-		}
-		return nil
-	})
-
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Failed to archive Supervisor",
-			"error":   err.Error(),
-		})
-	}
-
-	return c.JSON(response.ResponseModel{
-		RetCode: "200",
-		Message: "Supervisor successfully archived.",
-	})
-}
-
 // SORT BY HANDLE NG SUPERVISORS/HANDLERS
 func GetInternsBySupervisorID(c *fiber.Ctx) error {
 	supervisorID := c.Params("supervisor_id")
@@ -388,29 +418,30 @@ func GetInternsBySupervisorID(c *fiber.Ctx) error {
 	})
 }
 
+// Archive Supervisor
+func ArchiveSupervisor(c *fiber.Ctx) error {
+	id := c.Params("id") // Retrieve the ID from the route parameters
 
+	err := middleware.DBConn.Transaction(func(tx *gorm.DB) error {
+		// Update Supervisor status to "archived"
+		if err := tx.Model(&model.Supervisor{}).Where("id = ?", id).Update("status", "Archived").Error; err != nil {
+			return err
+		}
+		return nil
+	})
 
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to archive Supervisor",
+			"error":   err.Error(),
+		})
+	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Supervisor successfully archived.",
+	})
+}
 
 // func validatePassword(password string) error {
 // 	var passwordRegex = `^[A-Za-z\d@$!%*?&]{8,}$`

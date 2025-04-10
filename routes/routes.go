@@ -18,29 +18,33 @@ func AppRoutes(app *fiber.App) {
 
 	app.Post("/role/insert", controller.CreateRole)
 
-	//Additonal info for interns and supervisors
+	//Additonal info for interns and supervisors/ handlers
 	internTrack.Post("/user/:id/create-intern", controller.CreateIntern)
-	app.Post("/user/:id/create-supervisor", controller.CreateSuperVisor)
+	internTrack.Post("/user/:id/create-supervisor", controller.CreateSuperVisor)
+	internTrack.Post("/user/:id/create-handler", controller.CreateHandler)
 
 	//FOR USER REGISTRATION
-	app.Post("/user/insert", controller.CreateUser)
+	internTrack.Post("/user/insert", controller.CreateUser)
 
 	//Edit intern and supersivor
 	internTrack.Put("/user/:id/edit-supervisor", controller.EditSupervisor)
 	internTrack.Put("/user/:id/edit-intern", controller.EditIntern)
+	internTrack.Put("/user/:id/edit-handler", controller.EditHandler)
+	internTrack.Put("/change-password/:id", controller.ChangePassword) //change password
 
 	//GET DATA
 	internTrack.Get("/user/get/allinterns", controller.GetAllInterns)           //get all interns
 	internTrack.Get("/user/get/intern/:id", controller.GetSingleIntern)         //get single intern
 	internTrack.Get("/user/get/allsupervisors", controller.GetAllSupervisor)    //get all interns
 	internTrack.Get("/user/get/supervisor/:id", controller.GetSingleSupervisor) //get single intern
+	internTrack.Get("/api/interns/approved", controller.GetAllApprovedInterns)  // get all approved interns
+	internTrack.Get("/api/interns/pending", controller.GetAllPendingInterns)    // get all pending interns
+	internTrack.Get("/api/interns/archived", controller.GetAllArchivedInterns)  // get all archived interns
 
 	//archive data
-	internTrack.Put("/user/archive/intern/:id", controller.ArchiveIntern)         //INTERNS
+	internTrack.Put("/user/archive/intern/:ids", controller.ArchiveInterns)       //INTERNS
 	internTrack.Put("/user/archive/supervisor/:id", controller.ArchiveSupervisor) //SUPERVISORS
 
-	//Handler Registrtation
-	app.Post("/user/:id/create-handler", controller.CreateHandler)
 
 	//LOGIN PAGE
 	app.Post("/login", controller.Login)
@@ -56,9 +60,10 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Static("/uploads/excuse_letters", "./uploads/excuse_letters") //tumutulong sa pang view or pathing ng image
 	internTrack.Get("/view-excuse-letter/:filename", controller.ViewExcuseLetter)
 
+	//SEARCH
 	internTrack.Get("/interns/search/:value", controller.SearchInternsByParam)
 
-	//change status
+	//APPROVE STATUS
 	internTrack.Put("/user/status/intern/:ids", controller.ApproveInterns)       //INTERNS
 	internTrack.Put("/leave-request/status/:id", controller.ApproveLeaveRequest) //LEAVE REQUESTS
 
@@ -67,6 +72,15 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Get("/user/profile-picture/:id", controller.GetInternProfilePicture)      //VIEW PROFILE PICTURE
 	internTrack.Put("/user/update/profile-picture/:id", controller.UpdateProfilePicture)  //UPDATE PROFILE
 
-	//try endpoint
+	//SORT BY SUPERVISOR
 	internTrack.Get("/getinterns/handler/:supervisor_id", controller.GetInternsBySupervisorID)
+
+	//QR CODE
+	internTrack.Post("/generate-qr", controller.InsertAllDataQRCode)
+	internTrack.Post("/scan-qrcode", controller.ScanQRCode)
+	internTrack.Post("/default/scan-qrcode", controller.DefaultTime)
+	internTrack.Put("/update-dtr-update_out_am/:id", controller.UpdateTimeOutAM)
+	internTrack.Put("/update-dtr-update_in_pm/:id", controller.UpdateTimeInPM)
+	internTrack.Put("/update-dtr-update_out_pm/:id", controller.UpdateTimeOutPM)
+
 }

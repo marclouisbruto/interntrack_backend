@@ -31,6 +31,46 @@ func hashPassword(password string) (string, error) {
 	return string(hashedPassword), nil
 }
 
+// CUSTOM INTERNID GENERATOR
+func generateInternID(db *gorm.DB) (string, error) {
+	var lastIntern model.Intern
+	var lastID int
+	currentYear := time.Now().Year() // Get the current year
+
+	// Find the latest custom intern ID for the current year
+	if err := db.Table("interns").
+		Select("custom_intern_id").
+		Where("custom_intern_id LIKE ?", fmt.Sprintf("Intern-%d-%%", currentYear)).
+		Order("custom_intern_id DESC").
+		First(&lastIntern).Error; err != nil {
+		// If no previous ID exists for this year, start from 1
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			lastID = 1
+		} else {
+			return "", err
+		}
+	} else if lastIntern.CustomInternID != nil { // Check if not nil before processing
+		// Extract the last number (XXX part) and increment
+		parts := strings.Split(*lastIntern.CustomInternID, "-")
+		if len(parts) < 3 {
+			return "", fmt.Errorf("invalid ID format: %s", *lastIntern.CustomInternID)
+		}
+
+		lastDigit, err := strconv.Atoi(parts[2]) // Extract the XXX part
+		if err != nil {
+			return "", fmt.Errorf("failed to parse last sequence number: %v", err)
+		}
+		lastID = lastDigit + 1
+	} else {
+		lastID = 1
+	}
+
+	// Format the new custom intern ID
+	newInternID := fmt.Sprintf("Intern-%d-%03d", currentYear, lastID)
+
+	return newInternID, nil
+}
+
 // REGISTER INTERNS
 func RegisterIntern(c *fiber.Ctx) error {
 	req := new(InternRequest)
@@ -108,17 +148,8 @@ func EditIntern(c *fiber.Ctx) error {
 	if err := c.BodyParser(req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "Invalid request body",
-			"error":   err.Error()})
-	}
-
-	if req.User.Password != "" {
-		hashedPassword, err := hashPassword(req.User.Password)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"message": "Failed to hash password",
-				"error":   err.Error()})
-		}
-		req.User.Password = hashedPassword
+			"error":   err.Error(),
+		})
 	}
 
 	err := middleware.DBConn.Transaction(func(tx *gorm.DB) error {
@@ -134,7 +165,8 @@ func EditIntern(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Transaction failed",
-			"error":   err.Error()})
+			"error":   err.Error(),
+		})
 	}
 
 	return c.JSON(response.ResponseModel{
@@ -143,6 +175,79 @@ func EditIntern(c *fiber.Ctx) error {
 		Data:    req,
 	})
 }
+
+
+
+type PasswordUpdateRequest struct {
+	CurrentPassword  string `json:"current_password"`
+	NewPassword      string `json:"new_password"`
+	ConfirmPassword  string `json:"confirm_password"`
+}
+func checkPassword(hashedPassword, plainPassword string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
+}		
+
+//CHANGE PASSWORD
+func ChangePassword(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	req := new(PasswordUpdateRequest)
+	if err := c.BodyParser(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid request body",
+			"error":   err.Error(),
+		})
+	}
+
+	// Check if new password matches confirmation
+	if req.NewPassword != req.ConfirmPassword {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "New password and confirm password do not match",
+		})
+	}
+
+	var user model.User
+	if err := middleware.DBConn.First(&user, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"message": "User not found",
+			"error":   err.Error(),
+		})
+	}
+
+	// Compare current password with hashed password in DB
+	if err := checkPassword(user.Password, req.CurrentPassword); err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "Current password is incorrect",
+		})
+	}
+
+	// Hash new password
+	hashedPassword, err := hashPassword(req.NewPassword)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to hash new password",
+			"error":   err.Error(),
+		})
+	}
+
+	// Update password in DB
+	if err := middleware.DBConn.Model(&user).Update("password", hashedPassword).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to update password",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Password updated successfully",
+	})
+}
+
+
+//####################################
+//==========RETRIEVE INTERNS==========
+//####################################
 
 // GET ALL INTERNS
 func GetAllInterns(c *fiber.Ctx) error {
@@ -156,6 +261,57 @@ func GetAllInterns(c *fiber.Ctx) error {
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
 		Message: "Interns retrieved successfully.",
+		Data:    getAllInterns,
+	})
+}
+
+// GET ALL APPROVED INTERNS
+func GetAllApprovedInterns(c *fiber.Ctx) error {
+	getAllInterns := []model.Intern{}
+	if err := middleware.DBConn.Preload("User").Where("status = ?", "Approved").Find(&getAllInterns).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to retrieve approved interns",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Approved interns retrieved successfully.",
+		Data:    getAllInterns,
+	})
+}
+
+// GET ALL PENDING INTERNS
+func GetAllPendingInterns(c *fiber.Ctx) error {
+	getAllInterns := []model.Intern{}
+	if err := middleware.DBConn.Preload("User").Where("status = ?", "Pending").Find(&getAllInterns).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to retrieve pending interns",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Pending interns retrieved successfully.",
+		Data:    getAllInterns,
+	})
+}
+
+// GET ALL ARCHIVED INTERNS
+func GetAllArchivedInterns(c *fiber.Ctx) error {
+	getAllInterns := []model.Intern{}
+	if err := middleware.DBConn.Preload("User").Where("status = ?", "Archived").Find(&getAllInterns).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to retrieve archived interns",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Archived interns retrieved successfully.",
 		Data:    getAllInterns,
 	})
 }
@@ -181,12 +337,26 @@ func GetSingleIntern(c *fiber.Ctx) error {
 	})
 }
 
-// ARCHIVE
-func ArchiveIntern(c *fiber.Ctx) error {
-	id := c.Params("id")
+
+//####################################
+//==========CHANGE STATUS============
+//####################################
+
+// ARCHIVE MULTIPLE INTERNS
+func ArchiveInterns(c *fiber.Ctx) error {
+	internIDs := c.Params("ids") // Example: "1,2,3"
+	if internIDs == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Intern IDs are required",
+		})
+	}
+
+	idList := strings.Split(internIDs, ",")
 
 	err := middleware.DBConn.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.Intern{}).Where("id = ?", id).Update("status", "Archived").Error; err != nil {
+		if err := tx.Model(&model.Intern{}).
+			Where("id IN ?", idList).
+			Update("status", "Archived").Error; err != nil {
 			return err
 		}
 		return nil
@@ -194,13 +364,14 @@ func ArchiveIntern(c *fiber.Ctx) error {
 
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Failed to archive intern",
-			"error":   err.Error()})
+			"message": "Failed to archive interns",
+			"error":   err.Error(),
+		})
 	}
 
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
-		Message: "Intern successfully archived.",
+		Message: fmt.Sprintf("Interns with IDs [%s] successfully archived.", internIDs),
 	})
 }
 
@@ -305,47 +476,9 @@ func SearchInternsByParam(c *fiber.Ctx) error {
 	})
 }
 
-
-
-// CUSTOM INTERNID GENERATOR
-func generateInternID(db *gorm.DB) (string, error) {
-	var lastIntern model.Intern
-	var lastID int
-	currentYear := time.Now().Year() // Get the current year
-
-	// Find the latest custom intern ID for the current year
-	if err := db.Table("interns").
-		Select("custom_intern_id").
-		Where("custom_intern_id LIKE ?", fmt.Sprintf("Intern-%d-%%", currentYear)).
-		Order("custom_intern_id DESC").
-		First(&lastIntern).Error; err != nil {
-		// If no previous ID exists for this year, start from 1
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			lastID = 1
-		} else {
-			return "", err
-		}
-	} else if lastIntern.CustomInternID != nil { // Check if not nil before processing
-		// Extract the last number (XXX part) and increment
-		parts := strings.Split(*lastIntern.CustomInternID, "-")
-		if len(parts) < 3 {
-			return "", fmt.Errorf("invalid ID format: %s", *lastIntern.CustomInternID)
-		}
-
-		lastDigit, err := strconv.Atoi(parts[2]) // Extract the XXX part
-		if err != nil {
-			return "", fmt.Errorf("failed to parse last sequence number: %v", err)
-		}
-		lastID = lastDigit + 1
-	} else {
-		lastID = 1
-	}
-
-	// Format the new custom intern ID
-	newInternID := fmt.Sprintf("Intern-%d-%03d", currentYear, lastID)
-
-	return newInternID, nil
-}
+//####################################
+//==========PROFILE PICTURE===========
+//####################################
 
 // PANG UPLOAD NG PROFILE PICTURE
 func UploadProfilePicture(c *fiber.Ctx) error {
