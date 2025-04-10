@@ -44,6 +44,17 @@ type Supervisor struct {
 	User User `gorm:"foreignKey:UserID"`
 }
 
+type Handler struct {
+	gorm.Model
+	UserID       uint   `json:"user_id"`
+	SupervisorID uint   `json:"supervisor_id"`
+	Department   string `json:"department"`
+	Status       string `json:"status"`
+
+	Supervisor Supervisor `gorm:"foreignKey:SupervisorID"`
+	User       User       `gorm:"foreignKey:UserID"`
+}
+
 type Intern struct {
 	gorm.Model
 	CustomInternID   *string `json:"custom_intern_id" gorm:"unique;default:null"`
@@ -52,6 +63,7 @@ type Intern struct {
 	StudentID        string  `json:"student_id"`
 	SchoolName       string  `json:"school_name"`
 	SupervisorID     uint    `json:"supervisor_id"`
+	HandlerID        uint    `json:"handler_id"`
 	Course           string  `json:"course"`
 	OjtHoursRequired int     `json:"ojt_hours_required"`
 	OjtHoursRendered int     `json:"ojt_hours_rendered"`
@@ -60,6 +72,7 @@ type Intern struct {
 
 	User       User       `gorm:"foreignKey:UserID"`
 	Supervisor Supervisor `gorm:"foreignKey:SupervisorID"`
+	Handler    Handler    `gorm:"foreignKey:HandlerID"`
 	QRCodes    []QRCode   `gorm:"foreignKey:InternID"`
 	DtrEntries []DTREntry `gorm:"foreignKey:InternID"`
 }
