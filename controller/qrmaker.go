@@ -19,7 +19,7 @@ import (
 )
 
 type InternQR struct {
-	User   model.User   `json:"user"`
+	User   model.User  ` json:"user"`
 	Intern model.Intern `json:"intern"`
 }
 
@@ -36,6 +36,7 @@ func getManilaTime() time.Time {
 	loc, _ := time.LoadLocation("Asia/Manila")
 	return time.Now().In(loc)
 }
+
 
 // Convert image file to base64
 func fileToBase64(fileName string) (string, error) {
@@ -118,6 +119,7 @@ func GenerateQRCode(db *gorm.DB, internID uint, firstName, middleName, lastName,
 }
 
 // InsertAllDataQRCode handles the QR code generation and storage for intern data
+// InsertAllDataQRCode handles the QR code generation and storage for intern data
 func InsertAllDataQRCode(c *fiber.Ctx) error {
 	req := new(InternQR)
 	if err := c.BodyParser(req); err != nil {
@@ -150,12 +152,19 @@ func InsertAllDataQRCode(c *fiber.Ctx) error {
 			return errors.New("QRCode already exists")
 		}
 
+		// Conditionally append SuffixName
+		suffixStr := ""
+		if req.User.SuffixName != "" {
+			suffixStr = fmt.Sprintf("SuffixName: %s\n", req.User.SuffixName)
+		}
+
 		// Generate and save the QR code
 		qrCodeContent := fmt.Sprintf(
-			"FirstName: %s\nMiddleName: %s\nLastName: %s\nSupervisorID: %d\nStatus: %s\nAddress: %s",
+			"FirstName: %s\nMiddleName: %s\nLastName: %s\n%sSupervisorID: %d\nStatus: %s\nAddress: %s",
 			req.User.FirstName,
 			req.User.MiddleName,
 			req.User.LastName,
+			suffixStr,
 			req.Intern.SupervisorID,
 			req.Intern.Status,
 			req.Intern.Address,
