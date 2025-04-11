@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"firebase.google.com/go"
+	firebase "firebase.google.com/go"
 	"google.golang.org/api/option"
 )
 

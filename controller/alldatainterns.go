@@ -176,18 +176,17 @@ func EditIntern(c *fiber.Ctx) error {
 	})
 }
 
-
-
 type PasswordUpdateRequest struct {
-	CurrentPassword  string `json:"current_password"`
-	NewPassword      string `json:"new_password"`
-	ConfirmPassword  string `json:"confirm_password"`
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+	ConfirmPassword string `json:"confirm_password"`
 }
+
 func checkPassword(hashedPassword, plainPassword string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
-}		
+}
 
-//CHANGE PASSWORD
+// CHANGE PASSWORD
 func ChangePassword(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -243,7 +242,6 @@ func ChangePassword(c *fiber.Ctx) error {
 		Message: "Password updated successfully",
 	})
 }
-
 
 //####################################
 //==========RETRIEVE INTERNS==========
@@ -336,7 +334,6 @@ func GetSingleIntern(c *fiber.Ctx) error {
 		Data:    singleIntern,
 	})
 }
-
 
 //####################################
 //==========CHANGE STATUS============

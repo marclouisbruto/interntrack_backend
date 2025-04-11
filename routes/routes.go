@@ -45,7 +45,6 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Put("/user/archive/intern/:ids", controller.ArchiveInterns)       //INTERNS
 	internTrack.Put("/user/archive/supervisor/:id", controller.ArchiveSupervisor) //SUPERVISORS
 
-
 	//LOGIN PAGE
 	app.Post("/login", controller.Login)
 	internTrack.Post("/logout/", controller.Logout)
@@ -82,8 +81,7 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Put("/update-dtr-update_out_am/:id", controller.UpdateTimeOutAM)
 	internTrack.Put("/update-dtr-update_in_pm/:id", controller.UpdateTimeInPM)
 	internTrack.Put("/update-dtr-update_out_pm/:id", controller.UpdateTimeOutPM)
-
-
+	app.Get("/attendance/check-status/:status", controller.CheckStatus)
 
 	//testing
 	internTrack.Get("/export/pdf", controller.ExportDataToPDF) // Export data to PDF
