@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
+
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
@@ -27,6 +29,12 @@ func loadEnv() error {
 		return errors.New("error loading .env file")
 	}
 	return nil
+}
+
+// Get current time in Asia/Manila timezone
+func getManilaTime() time.Time {
+	loc, _ := time.LoadLocation("Asia/Manila")
+	return time.Now().In(loc)
 }
 
 // Convert image file to base64

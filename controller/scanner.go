@@ -122,7 +122,7 @@ func ScanQRCode(c *fiber.Ctx) error {
 	// Define a struct to parse JSON input
 	type RequestBody struct {
 		Interns []struct {
-			User   model.User  ` json:"user"`
+			User   model.User   `json:"user"`
 			Intern model.Intern `json:"intern"`
 		} `json:"interns"`
 	}
@@ -139,8 +139,9 @@ func ScanQRCode(c *fiber.Ctx) error {
 
 	// Get current time in Asia/Manila
 	loc, _ := time.LoadLocation("Asia/Manila")
-	currentTime := time.Now().In(loc).Format("15:04:05") // HH:mm:ss format
-	fmt.Println("Current time:", currentTime)            // Optional: Log the current time
+	currentTime := time.Now().In(loc)                // Use time.Time instead of string for comparison
+	currentTimeStr := currentTime.Format("15:04:05") // HH:mm:ss format
+	fmt.Println("Current time:", currentTimeStr)     // Optional: Log the current time
 
 	// This will store successfully scanned intern data
 	var scannedInterns []fiber.Map
@@ -174,23 +175,36 @@ func ScanQRCode(c *fiber.Ctx) error {
 		}
 
 		// Get the current month in "MM-DD-YY" format
-		currentMonth := time.Now().In(loc).Format("01-02-06")
+		currentMonth := currentTime.Format("01-02-06")
 
 		// Set SupervisorID (Modify this if needed dynamically)
 		supervisorID := uint(1)
 
-		// Ensure TimeInAM is between 8:00 AM and 11:59 AM (current time as placeholder)
-		timeInAM := currentTime
+		// Define time windows for TimeInAM and TimeInPM
+		timeInAMStart := "08:00:00"
+		timeInAMEnd := "12:00:00"
+		timeInPMStart := "13:00:00"
+		timeInPMEnd := "17:00:00"
 
-		// Create a new DTR entry (Only storing TimeInAM)
+		// Initialize time variables
+		var timeInAM, timeInPM string
+
+		// Check if the current time is within the AM range
+		if currentTimeStr >= timeInAMStart && currentTimeStr <= timeInAMEnd {
+			timeInAM = currentTimeStr // Set the current time as TimeInAM
+		} else if currentTimeStr >= timeInPMStart && currentTimeStr <= timeInPMEnd {
+			timeInPM = currentTimeStr // Set the current time as TimeInPM
+		}
+
+		// Create a new DTR entry
 		dtrEntry := model.DTREntry{
 			UserID:       internData.UserID,
 			InternID:     internData.ID,
 			SupervisorID: supervisorID,
 			Month:        currentMonth,
-			TimeInAM:     timeInAM,
+			TimeInAM:     timeInAM, // TimeInAM will be set if it's between 08:00-12:00
 			TimeOutAM:    "",
-			TimeInPM:     "",
+			TimeInPM:     timeInPM, // TimeInPM will be set if it's between 13:00-17:00
 			TimeOutPM:    "",
 			TotalHours:   "",
 		}
@@ -382,7 +396,6 @@ func UpdateTimeInPM(c *fiber.Ctx) error {
 }
 
 func UpdateTimeOutPM(c *fiber.Ctx) error {
-	// Extract intern IDs from URL param (comma-separated)
 	internIDs := c.Params("id")
 	if internIDs == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -390,7 +403,6 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 		})
 	}
 
-	// Split the IDs by comma to get a list of intern IDs
 	idList := strings.Split(internIDs, ",")
 	if len(idList) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -398,28 +410,21 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get the current time in the Asia/Manila timezone
 	loc, _ := time.LoadLocation("Asia/Manila")
 	currentTime := time.Now().In(loc)
 	timeOutPM := currentTime.Format("15:04:05")
 
-	// Prepare to track any errors
 	var errors []string
 
-	// Loop through each intern ID
 	for _, id := range idList {
-		// Validate that the intern exists
 		var intern model.Intern
-		if err := middleware.DBConn.Table("interns").
-			Where("id = ?", id).
-			First(&intern).Error; err != nil {
+		if err := middleware.DBConn.Table("interns").Where("id = ?", id).First(&intern).Error; err != nil {
 			errors = append(errors, fmt.Sprintf("Intern ID %s not found", id))
-			continue // Skip this ID and continue to the next one
+			continue
 		}
 
-		// Fetch the DTR entry for the intern
 		var dtrEntry model.DTREntry
-		currentMonth := time.Now().In(loc).Format("01-02-06") // MM-DD-YY format
+		currentMonth := time.Now().In(loc).Format("01-02-06")
 
 		err := middleware.DBConn.Where("intern_id = ? AND month = ?", intern.ID, currentMonth).First(&dtrEntry).Error
 		if err != nil {
@@ -427,64 +432,60 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 			continue
 		}
 
-		// Convert the time fields from string to time.Time
-		timeInAM, err := time.Parse("15:04:05", dtrEntry.TimeInAM)
-		if err != nil {
-			errors = append(errors, fmt.Sprintf("Invalid TimeInAM format for intern ID %s", id))
+		var totalAM, totalPM float64
+
+		// Try parsing AM times if available
+		if dtrEntry.TimeInAM != "" && dtrEntry.TimeOutAM != "" {
+			timeInAM, err1 := time.Parse("15:04:05", dtrEntry.TimeInAM)
+			timeOutAM, err2 := time.Parse("15:04:05", dtrEntry.TimeOutAM)
+			if err1 == nil && err2 == nil {
+				totalAM = timeOutAM.Sub(timeInAM).Hours()
+			}
+		}
+
+		// Try parsing PM times if available
+		var pmValid bool
+		if dtrEntry.TimeInPM != "" {
+			timeInPM, err1 := time.Parse("15:04:05", dtrEntry.TimeInPM)
+			timeOutPMParsed, err2 := time.Parse("15:04:05", timeOutPM)
+			if err1 == nil && err2 == nil {
+				totalPM = timeOutPMParsed.Sub(timeInPM).Hours()
+				pmValid = true
+			} else {
+				errors = append(errors, fmt.Sprintf("Invalid PM time format for intern ID %s", id))
+				continue
+			}
+		} else {
+			errors = append(errors, fmt.Sprintf("TimeInPM is missing for intern ID %s", id))
 			continue
 		}
 
-		timeOutAM, err := time.Parse("15:04:05", dtrEntry.TimeOutAM)
-		if err != nil {
-			errors = append(errors, fmt.Sprintf("Invalid TimeOutAM format for intern ID %s", id))
+		// Skip if no valid working hours
+		if totalAM == 0 && !pmValid {
+			errors = append(errors, fmt.Sprintf("No valid AM or PM times for intern ID %s", id))
 			continue
 		}
 
-		timeInPM, err := time.Parse("15:04:05", dtrEntry.TimeInPM)
-		if err != nil {
-			errors = append(errors, fmt.Sprintf("Invalid TimeInPM format for intern ID %s", id))
-			continue
-		}
-
-		// Parse the TimeOutPM string into time.Time
-		timeOutPMParsed, err := time.Parse("15:04:05", timeOutPM)
-		if err != nil {
-			errors = append(errors, fmt.Sprintf("Invalid TimeOutPM format for intern ID %s", id))
-			continue
-		}
-
-		// Calculate total hours worked (in decimal)
-		totalAM := timeOutAM.Sub(timeInAM).Hours()
-		totalPM := timeOutPMParsed.Sub(timeInPM).Hours()
-
-		// Total hours worked in a day (decimal)
 		totalHours := totalAM + totalPM
-
-		// Convert decimal total hours into hour:minute:second format
 		hours := int(totalHours)
 		minutes := int((totalHours - float64(hours)) * 60)
 		seconds := int(((totalHours-float64(hours))*60 - float64(minutes)) * 60)
-
-		// Format total hours as "hh:mm:ss"
 		totalHoursFormatted := fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 
-		// Prepare data for update (only TimeOutPM)
 		updateData := map[string]interface{}{
 			"time_out_pm": timeOutPM,
-			"total_hours": totalHoursFormatted, // Store the formatted total hours in hh:mm:ss
+			"total_hours": totalHoursFormatted,
 		}
 
-		// Start a transaction
 		tx := middleware.DBConn.Begin()
 
-		// Update DTR entry with new TimeOutPM and totalHours
 		if err := tx.Model(&dtrEntry).Updates(updateData).Error; err != nil {
-			tx.Rollback() // Rollback if any error occurs
+			tx.Rollback()
 			errors = append(errors, fmt.Sprintf("Failed to update DTR entry for intern ID %s", id))
 			continue
 		}
 
-		// Fetch all DTREntry records for the intern to sum up TotalHours
+		// Fetch all entries to recalculate total rendered
 		var dtrEntries []model.DTREntry
 		err = middleware.DBConn.Where("intern_id = ?", intern.ID).Find(&dtrEntries).Error
 		if err != nil {
@@ -493,14 +494,10 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 			continue
 		}
 
-		// Sum up all TotalHours and update OjtHoursRendered
 		var totalRendered time.Duration
 		for _, entry := range dtrEntries {
-			totalHoursStr := entry.TotalHours
-			// Parse TotalHours (hh:mm:ss) into time.Duration
-			parts := strings.Split(totalHoursStr, ":")
+			parts := strings.Split(entry.TotalHours, ":")
 			if len(parts) != 3 {
-				errors = append(errors, fmt.Sprintf("Invalid TotalHours format for intern ID %s", id))
 				continue
 			}
 			h, _ := strconv.Atoi(parts[0])
@@ -509,7 +506,6 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 			totalRendered += time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second
 		}
 
-		// Update OjtHoursRendered
 		totalRenderedStr := fmt.Sprintf("%02d:%02d:%02d", int(totalRendered.Hours()), int(totalRendered.Minutes())%60, int(totalRendered.Seconds())%60)
 		err = middleware.DBConn.Model(&intern).Update("ojt_hours_rendered", totalRenderedStr).Error
 		if err != nil {
@@ -518,11 +514,9 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 			continue
 		}
 
-		// Commit the transaction if everything goes well
 		tx.Commit()
 	}
 
-	// If there were errors, return them
 	if len(errors) > 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Some updates failed",
@@ -530,7 +524,6 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 		})
 	}
 
-	// Success message
 	return c.JSON(fiber.Map{
 		"message": fmt.Sprintf("DTR entries updated successfully for intern IDs %s with TimeOutPM %s", internIDs, timeOutPM),
 	})
