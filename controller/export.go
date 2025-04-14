@@ -44,7 +44,7 @@ func formatFullName(f, m, l, s string) string {
 func ExportDataToPDF(c *fiber.Ctx) error {
 	var interns []ExportIntern
 
-	// Update SELECT query to include school_name, course, phone_number
+	// Fetch interns
 	err := middleware.DBConn.Table("users").
 		Select(`users.id AS id, interns.custom_intern_id, users.first_name, users.middle_name, users.last_name, 
 	        users.suffix_name, users.email, interns.supervisor_id, handlers.id AS handler_id,
@@ -59,11 +59,11 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to fetch interns: %v", err))
 	}
 
-	// Maps
+	// Maps for names
 	supervisorMap := make(map[int]string)
 	handlerMap := make(map[int]string)
 
-	// Supervisor names
+	// Fetch supervisors
 	var supervisors []struct {
 		UserID int `gorm:"column:id"`
 	}
@@ -77,7 +77,7 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 		}
 	}
 
-	// Handler names
+	// Fetch handlers
 	var handlers []struct {
 		ID     int
 		UserID int
@@ -93,73 +93,101 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 	}
 
 	// Create PDF
-	pdf := gofpdf.New("L", "mm", "A4", "")
-	pdf.AddPage()
-	pdf.SetFont("Arial", "B", 12)
-	pdf.CellFormat(0, 10, "List of Interns", "", 1, "C", false, 0, "")
-	pdf.Ln(5)
+	pdf := gofpdf.New("L", "mm", "Legal", "")
+	pdf.SetFont("Arial", "", 11)
 
-	// Headers and fixed widths
-headers := []string{"ID", "Custom ID", "Full Name", "Email", "School", "Course", "Phone", "Supervisor/Handler"}
+	// Table headers
+	headers := []string{"No.", "Custom ID", "Full Name", "Email", "School Name", "Course", "Phone", "Supervisor/Handler"}
 
-// Fixed column widths (total ~270mm out of 297mm for A4 landscape)
-widths := []float64{10, 25, 45, 50, 40, 35, 30, 35}
+	// Prepare data rows
+	dataRows := [][]string{}
+	for i, intern := range interns {
+		fullName := formatFullName(intern.FirstName, intern.MiddleName, intern.LastName, intern.SuffixName)
 
-
-// Header row
-pdf.SetFont("Arial", "B", 10)
-pdf.SetFillColor(200, 200, 200)
-for i, h := range headers {
-	pdf.CellFormat(widths[i], 8, h, "1", 0, "C", true, 0, "")
-}
-pdf.Ln(-1)
-
-// Data rows
-pdf.SetFont("Arial", "", 9)
-for _, intern := range interns {
-	fullName := formatFullName(intern.FirstName, intern.MiddleName, intern.LastName, intern.SuffixName)
-
-	assignedName := "N/A"
-	if intern.HandlerID != nil {
-		if name, ok := handlerMap[*intern.HandlerID]; ok {
-			assignedName = name
+		assignedName := "N/A"
+		if intern.HandlerID != nil {
+			if name, ok := handlerMap[*intern.HandlerID]; ok {
+				assignedName = name
+			}
+		} else if intern.SupervisorID != nil {
+			if name, ok := supervisorMap[*intern.SupervisorID]; ok {
+				assignedName = name
+			}
 		}
-	} else if intern.SupervisorID != nil {
-		if name, ok := supervisorMap[*intern.SupervisorID]; ok {
-			assignedName = name
+
+		row := []string{
+			fmt.Sprintf("%d", i+1), // Counter instead of ID
+			intern.CustomInternID,
+			fullName,
+			intern.Email,
+			intern.SchoolName,
+			intern.Course,
+			intern.PhoneNumber,
+			assignedName,
+		}
+		dataRows = append(dataRows, row)
+	}
+
+	// Column widths
+	pdf.SetFont("Arial", "", 11)
+	colWidths := make([]float64, len(headers))
+	for i, header := range headers {
+		colWidths[i] = pdf.GetStringWidth(header) + 6
+	}
+	for _, row := range dataRows {
+		for i, cell := range row {
+			w := pdf.GetStringWidth(cell) + 6
+			if w > colWidths[i] {
+				colWidths[i] = w
+			}
 		}
 	}
 
-	row := []string{
-		fmt.Sprintf("%d", intern.ID),
-		intern.CustomInternID,
-		fullName,
-		intern.Email,
-		intern.SchoolName,
-		intern.Course,
-		intern.PhoneNumber,
-		assignedName,
-	}
+	const internsPerPage = 20
+	totalPages := (len(dataRows)-1)/internsPerPage + 1
+	rowIndex := 0
 
-	for i, data := range row {
-		align := "L"
-		if i == 0 {
-			align = "C"
+	for page := 0; page < totalPages; page++ {
+		pdf.AddPage()
+
+		// Title
+		pdf.SetFont("Arial", "B", 12)
+		pdf.CellFormat(0, 10, "List of Interns", "", 1, "C", false, 0, "")
+		pdf.Ln(3)
+
+		// Table Headers
+		pdf.SetFont("Arial", "B", 11)
+		pdf.SetFillColor(200, 200, 200)
+		for i, h := range headers {
+			pdf.CellFormat(colWidths[i], 10, h, "1", 0, "C", true, 0, "")
 		}
-		pdf.CellFormat(widths[i], 8, data, "1", 0, align, false, 0, "")
+		pdf.Ln(-1)
+
+		// Table Rows for this page
+		pdf.SetFont("Arial", "", 10)
+		for count := 0; count < internsPerPage && rowIndex < len(dataRows); count++ {
+			row := dataRows[rowIndex]
+			for i, data := range row {
+				align := "L"
+				if i == 0 {
+					align = "C"
+				}
+				rowHeight := 8.1
+				pdf.CellFormat(colWidths[i], rowHeight, data, "1", 0, align, false, 0, "")			
+			}
+			pdf.Ln(-1)
+			rowIndex++
+		}
 	}
-	pdf.Ln(-1)
-}
 
-
-	// Output PDF to buffer
+	// Output
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to generate PDF: %v", err))
 	}
 
-	// Return as downloadable PDF
 	c.Set("Content-Type", "application/pdf")
 	c.Set("Content-Disposition", "attachment; filename=intern_list.pdf")
 	return c.Send(buf.Bytes())
 }
+
