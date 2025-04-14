@@ -93,82 +93,64 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 	}
 
 	// Create PDF
-	pdf := gofpdf.New("L", "mm", "Legal", "")
+	pdf := gofpdf.New("L", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 12)
 	pdf.CellFormat(0, 10, "List of Interns", "", 1, "C", false, 0, "")
 	pdf.Ln(5)
 
-	// Headers
-	headers := []string{"ID", "Custom ID", "Full Name", "Email", "School Name", "Course", "Phone", "Supervisor/Handler"}
+	// Headers and fixed widths
+headers := []string{"ID", "Custom ID", "Full Name", "Email", "School", "Course", "Phone", "Supervisor/Handler"}
 
-	// Prepare data rows
-	dataRows := [][]string{}
-	pdf.SetFont("Arial", "", 11)
+// Fixed column widths (total ~270mm out of 297mm for A4 landscape)
+widths := []float64{10, 25, 45, 50, 40, 35, 30, 35}
 
-	for _, intern := range interns {
-		fullName := formatFullName(intern.FirstName, intern.MiddleName, intern.LastName, intern.SuffixName)
 
-		assignedName := "N/A"
-		if intern.HandlerID != nil {
-			if name, ok := handlerMap[*intern.HandlerID]; ok {
-				assignedName = name
-			}
-		} else if intern.SupervisorID != nil {
-			if name, ok := supervisorMap[*intern.SupervisorID]; ok {
-				assignedName = name
-			}
+// Header row
+pdf.SetFont("Arial", "B", 10)
+pdf.SetFillColor(200, 200, 200)
+for i, h := range headers {
+	pdf.CellFormat(widths[i], 8, h, "1", 0, "C", true, 0, "")
+}
+pdf.Ln(-1)
+
+// Data rows
+pdf.SetFont("Arial", "", 9)
+for _, intern := range interns {
+	fullName := formatFullName(intern.FirstName, intern.MiddleName, intern.LastName, intern.SuffixName)
+
+	assignedName := "N/A"
+	if intern.HandlerID != nil {
+		if name, ok := handlerMap[*intern.HandlerID]; ok {
+			assignedName = name
 		}
-
-		row := []string{
-			fmt.Sprintf("%d", intern.ID),
-			intern.CustomInternID,
-			fullName,
-			intern.Email,
-			intern.SchoolName,
-			intern.Course,
-			intern.PhoneNumber,
-			assignedName,
-		}
-		dataRows = append(dataRows, row)
-	}
-
-	// Calculate max width per column
-	pdf.SetFont("Arial", "", 11)
-	colWidths := make([]float64, len(headers))
-	for i, header := range headers {
-		colWidths[i] = pdf.GetStringWidth(header) + 6 // Add some padding
-	}
-
-	for _, row := range dataRows {
-		for i, cell := range row {
-			w := pdf.GetStringWidth(cell) + 6
-			if w > colWidths[i] {
-				colWidths[i] = w
-			}
+	} else if intern.SupervisorID != nil {
+		if name, ok := supervisorMap[*intern.SupervisorID]; ok {
+			assignedName = name
 		}
 	}
 
-	// Table Headers
-	pdf.SetFont("Arial", "B", 12)
-	pdf.SetFillColor(200, 200, 200)
-	for i, h := range headers {
-		pdf.CellFormat(colWidths[i], 10, h, "1", 0, "C", true, 0, "")
+	row := []string{
+		fmt.Sprintf("%d", intern.ID),
+		intern.CustomInternID,
+		fullName,
+		intern.Email,
+		intern.SchoolName,
+		intern.Course,
+		intern.PhoneNumber,
+		assignedName,
+	}
+
+	for i, data := range row {
+		align := "L"
+		if i == 0 {
+			align = "C"
+		}
+		pdf.CellFormat(widths[i], 8, data, "1", 0, align, false, 0, "")
 	}
 	pdf.Ln(-1)
+}
 
-	// Table Rows
-	pdf.SetFont("Arial", "", 11)
-	for _, row := range dataRows {
-		for i, data := range row {
-			align := "L"
-			if i == 0 {
-				align = "C"
-			}
-			pdf.CellFormat(colWidths[i], 10, data, "1", 0, align, false, 0, "")
-		}
-		pdf.Ln(-1)
-	}
 
 	// Output PDF to buffer
 	var buf bytes.Buffer
