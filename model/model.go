@@ -63,7 +63,7 @@ type Intern struct {
 	StudentID        string  `json:"student_id"`
 	SchoolName       string  `json:"school_name"`
 	SupervisorID     uint    `json:"supervisor_id"`
-	HandlerID        uint    `json:"handler_id"`
+	HandlerID        *uint    `json:"handler_id"`
 	Course           string  `json:"course"`
 	OjtHoursRequired int     `json:"ojt_hours_required"`
 	OjtHoursRendered string     `json:"ojt_hours_rendered"`

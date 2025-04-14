@@ -12,7 +12,7 @@ import (
 
 // Struct for exporting intern data
 // Struct for exporting intern data
-type ExportIntern struct {
+type InternInfo struct {
 	ID             int
 	CustomInternID string
 	FirstName      string
@@ -42,7 +42,7 @@ func formatFullName(f, m, l, s string) string {
 
 // Export interns data to PDF
 func ExportDataToPDF(c *fiber.Ctx) error {
-	var interns []ExportIntern
+	var interns []InternInfo
 
 	// Fetch interns
 	err := middleware.DBConn.Table("users").
@@ -188,6 +188,160 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 
 	c.Set("Content-Type", "application/pdf")
 	c.Set("Content-Disposition", "attachment; filename=intern_list.pdf")
+	return c.Send(buf.Bytes())
+}
+
+// Export intern attendance data to PDF
+func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
+	type AttendanceInfo struct {
+		CustomInternID string
+		SupervisorID   *int
+		HandlerID      *int
+		Month          string
+		TimeInAM       *string
+		TimeOutAM      *string
+		TimeInPM       *string
+		TimeOutPM      *string
+	}
+
+	var records []AttendanceInfo
+
+	err := middleware.DBConn.Table("dtr_entries").
+		Select(`interns.custom_intern_id, interns.supervisor_id, interns.handler_id, dtr_entries.month, 
+			dtr_entries.time_in_am, dtr_entries.time_out_am, dtr_entries.time_in_pm, dtr_entries.time_out_pm`).
+		Joins("JOIN interns ON dtr_entries.intern_id = interns.id").
+		Where("interns.custom_intern_id != ''").
+		Order("dtr_entries.month ASC").
+		Scan(&records).Error
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to fetch attendance: %v", err))
+	}
+
+	supervisorMap := make(map[int]string)
+	handlerMap := make(map[int]string)
+
+	var supervisors []struct {
+		UserID int `gorm:"column:id"`
+	}
+	if err := middleware.DBConn.Table("supervisors").Select("id").Find(&supervisors).Error; err == nil {
+		for _, s := range supervisors {
+			var user model.User
+			if err := middleware.DBConn.Table("users").Where("id = ?", s.UserID).First(&user).Error; err == nil {
+				supervisorMap[s.UserID] = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+			}
+		}
+	}
+
+	var handlers []struct {
+		ID     int
+		UserID int
+	}
+	if err := middleware.DBConn.Table("handlers").Select("id, user_id").Find(&handlers).Error; err == nil {
+		for _, h := range handlers {
+			var user model.User
+			if err := middleware.DBConn.Table("users").Where("id = ?", h.UserID).First(&user).Error; err == nil {
+				handlerMap[h.ID] = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+			}
+		}
+	}
+
+	pdf := gofpdf.New("L", "mm", "Legal", "")
+	pdf.SetFont("Arial", "", 11)
+
+	headers := []string{"Custom ID", "Supervisor/Handler", "Month", "Time In AM", "Time Out AM", "Time In PM", "Time Out PM", "Remarks"}
+	colWidths := []float64{35, 50, 25, 30, 30, 30, 30, 35}
+
+	dataRows := [][]string{}
+	for _, r := range records {
+		assigned := "N/A"
+		if r.HandlerID != nil {
+			if val, ok := handlerMap[*r.HandlerID]; ok {
+				assigned = val
+			}
+		} else if r.SupervisorID != nil {
+			if val, ok := supervisorMap[*r.SupervisorID]; ok {
+				assigned = val
+			}
+		}
+
+		getTime := func(t *string) string {
+			if t == nil || *t == "" {
+				return "-"
+			}
+			return *t
+		}
+
+		// Logic for remarks
+		timeAMIn := getTime(r.TimeInAM)
+		timeAMOut := getTime(r.TimeOutAM)
+		timePMIn := getTime(r.TimeInPM)
+		timePMOut := getTime(r.TimeOutPM)
+
+		remarks := "Absent"
+		isAMFilled := timeAMIn != "-" && timeAMOut != "-"
+		isPMFilled := timePMIn != "-" && timePMOut != "-"
+
+		if isAMFilled && isPMFilled {
+			remarks = "Present"
+		} else if isAMFilled && !isPMFilled {
+			remarks = "Half-Day-AM"
+		} else if !isAMFilled && isPMFilled {
+			remarks = "Half-Day-PM"
+		}
+
+		row := []string{
+			r.CustomInternID,
+			assigned,
+			r.Month,
+			timeAMIn,
+			timeAMOut,
+			timePMIn,
+			timePMOut,
+			remarks,
+		}
+		dataRows = append(dataRows, row)
+	}
+
+	const rowsPerPage = 20
+	totalPages := (len(dataRows)-1)/rowsPerPage + 1
+	rowIndex := 0
+
+	for page := 0; page < totalPages; page++ {
+		pdf.AddPage()
+
+		pdf.SetFont("Arial", "B", 12)
+		pdf.CellFormat(0, 10, "Intern Attendance Records", "", 1, "C", false, 0, "")
+		pdf.Ln(3)
+
+		pdf.SetFont("Arial", "B", 11)
+		pdf.SetFillColor(220, 220, 220)
+		for i, h := range headers {
+			pdf.CellFormat(colWidths[i], 10, h, "1", 0, "C", true, 0, "")
+		}
+		pdf.Ln(-1)
+
+		pdf.SetFont("Arial", "", 10)
+		for count := 0; count < rowsPerPage && rowIndex < len(dataRows); count++ {
+			row := dataRows[rowIndex]
+			for i, cell := range row {
+				align := "L"
+				if i >= 2 && i <= 6 || cell == "-" || i == 7 {
+					align = "C"
+				}
+				pdf.CellFormat(colWidths[i], 8, cell, "1", 0, align, false, 0, "")
+			}
+			pdf.Ln(-1)
+			rowIndex++
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to generate PDF: %v", err))
+	}
+
+	c.Set("Content-Type", "application/pdf")
+	c.Set("Content-Disposition", "attachment; filename=intern_attendance.pdf")
 	return c.Send(buf.Bytes())
 }
 

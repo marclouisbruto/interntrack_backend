@@ -87,5 +87,6 @@ func AppRoutes(app *fiber.App) {
 
 
 	//testing
-	internTrack.Get("/export/pdf", controller.ExportDataToPDF) // Export data to PDF
+	internTrack.Get("/export/info", controller.ExportDataToPDF) // Export data to PDF
+	internTrack.Get("/export/attendance", controller.ExportInternAttendanceToPDF) // Export attendance to PDF
 }
