@@ -59,36 +59,56 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to fetch interns: %v", err))
 	}
 
-	// Maps for names
-	supervisorMap := make(map[int]string)
-	handlerMap := make(map[int]string)
+	// Maps for names and departments
+	supervisorMap := make(map[int]struct {
+		Name       string
+		Department string
+	})
+	handlerMap := make(map[int]struct {
+		Name       string
+		Department string
+	})
 
 	// Fetch supervisors
 	var supervisors []struct {
-		UserID int `gorm:"column:id"`
+		UserID     int `gorm:"column:id"`
+		Department string
 	}
-	if err := middleware.DBConn.Table("supervisors").Select("id").Find(&supervisors).Error; err != nil {
+	if err := middleware.DBConn.Table("supervisors").Select("id, department").Find(&supervisors).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Error retrieving supervisors")
 	}
 	for _, s := range supervisors {
 		var user model.User
 		if err := middleware.DBConn.Table("users").Where("id = ?", s.UserID).First(&user).Error; err == nil {
-			supervisorMap[s.UserID] = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+			supervisorMap[s.UserID] = struct {
+				Name       string
+				Department string
+			}{
+				Name:       fmt.Sprintf("%s %s", user.FirstName, user.LastName),
+				Department: s.Department,
+			}
 		}
 	}
 
 	// Fetch handlers
 	var handlers []struct {
-		ID     int
-		UserID int
+		ID         int
+		UserID     int
+		Department string
 	}
-	if err := middleware.DBConn.Table("handlers").Select("id, user_id").Find(&handlers).Error; err != nil {
+	if err := middleware.DBConn.Table("handlers").Select("id, user_id, department").Find(&handlers).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Error retrieving handlers")
 	}
 	for _, h := range handlers {
 		var user model.User
 		if err := middleware.DBConn.Table("users").Where("id = ?", h.UserID).First(&user).Error; err == nil {
-			handlerMap[h.ID] = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+			handlerMap[h.ID] = struct {
+				Name       string
+				Department string
+			}{
+				Name:       fmt.Sprintf("%s %s", user.FirstName, user.LastName),
+				Department: h.Department,
+			}
 		}
 	}
 
@@ -97,7 +117,7 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 	pdf.SetFont("Arial", "", 11)
 
 	// Table headers
-	headers := []string{"No.", "Custom ID", "Full Name", "Email", "School Name", "Course", "Phone", "Supervisor/Handler"}
+	headers := []string{"No.", "Custom ID", "Full Name", "Email", "School Name", "Course", "Phone", "Supervisor/Handler", "Department"}
 
 	// Prepare data rows
 	dataRows := [][]string{}
@@ -105,18 +125,22 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 		fullName := formatFullName(intern.FirstName, intern.MiddleName, intern.LastName, intern.SuffixName)
 
 		assignedName := "N/A"
+		assignedDept := "N/A"
+
 		if intern.HandlerID != nil {
-			if name, ok := handlerMap[*intern.HandlerID]; ok {
-				assignedName = name
+			if info, ok := handlerMap[*intern.HandlerID]; ok {
+				assignedName = info.Name
+				assignedDept = info.Department
 			}
 		} else if intern.SupervisorID != nil {
-			if name, ok := supervisorMap[*intern.SupervisorID]; ok {
-				assignedName = name
+			if info, ok := supervisorMap[*intern.SupervisorID]; ok {
+				assignedName = info.Name
+				assignedDept = info.Department
 			}
 		}
 
 		row := []string{
-			fmt.Sprintf("%d", i+1), // Counter instead of ID
+			fmt.Sprintf("%d", i+1),
 			intern.CustomInternID,
 			fullName,
 			intern.Email,
@@ -124,6 +148,7 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 			intern.Course,
 			intern.PhoneNumber,
 			assignedName,
+			assignedDept,
 		}
 		dataRows = append(dataRows, row)
 	}
@@ -143,6 +168,12 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 		}
 	}
 
+	// Total width of the table for centering
+	totalTableWidth := 0.0
+	for _, w := range colWidths {
+		totalTableWidth += w
+	}
+
 	const internsPerPage = 20
 	totalPages := (len(dataRows)-1)/internsPerPage + 1
 	rowIndex := 0
@@ -155,25 +186,36 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 		pdf.CellFormat(0, 10, "List of Interns", "", 1, "C", false, 0, "")
 		pdf.Ln(3)
 
+		// Centering start X
+		pageWidth, _ := pdf.GetPageSize()
+		startX := (pageWidth - totalTableWidth) / 2
+
 		// Table Headers
 		pdf.SetFont("Arial", "B", 11)
 		pdf.SetFillColor(200, 200, 200)
+		pdf.SetX(startX)
 		for i, h := range headers {
 			pdf.CellFormat(colWidths[i], 10, h, "1", 0, "C", true, 0, "")
 		}
 		pdf.Ln(-1)
 
-		// Table Rows for this page
+		// Table Rows
 		pdf.SetFont("Arial", "", 10)
 		for count := 0; count < internsPerPage && rowIndex < len(dataRows); count++ {
 			row := dataRows[rowIndex]
+			pdf.SetX(startX)
 			for i, data := range row {
 				align := "L"
+				rowHeight := 8.1
+
 				if i == 0 {
 					align = "C"
+					pdf.SetFont("Arial", "", 8) // small font for "No."
+					pdf.CellFormat(colWidths[i], rowHeight, data, "1", 0, align, false, 0, "")
+					pdf.SetFont("Arial", "", 10) // reset
+				} else {
+					pdf.CellFormat(colWidths[i], rowHeight, data, "1", 0, align, false, 0, "")
 				}
-				rowHeight := 8.1
-				pdf.CellFormat(colWidths[i], rowHeight, data, "1", 0, align, false, 0, "")			
 			}
 			pdf.Ln(-1)
 			rowIndex++
@@ -251,6 +293,11 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 	headers := []string{"Custom ID", "Supervisor/Handler", "Month", "Time In AM", "Time Out AM", "Time In PM", "Time Out PM", "Remarks"}
 	colWidths := []float64{35, 50, 25, 30, 30, 30, 30, 35}
 
+	totalTableWidth := 0.0
+	for _, w := range colWidths {
+		totalTableWidth += w
+	}
+
 	dataRows := [][]string{}
 	for _, r := range records {
 		assigned := "N/A"
@@ -271,7 +318,6 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 			return *t
 		}
 
-		// Logic for remarks
 		timeAMIn := getTime(r.TimeInAM)
 		timeAMOut := getTime(r.TimeOutAM)
 		timePMIn := getTime(r.TimeInPM)
@@ -308,10 +354,14 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 
 	for page := 0; page < totalPages; page++ {
 		pdf.AddPage()
+		pageWidth, _ := pdf.GetPageSize()
+		marginX := (pageWidth - totalTableWidth) / 2
+		pdf.SetX(marginX)
 
 		pdf.SetFont("Arial", "B", 12)
-		pdf.CellFormat(0, 10, "Intern Attendance Records", "", 1, "C", false, 0, "")
+		pdf.CellFormat(totalTableWidth, 10, "Intern Attendance Records", "", 1, "C", false, 0, "")
 		pdf.Ln(3)
+		pdf.SetX(marginX)
 
 		pdf.SetFont("Arial", "B", 11)
 		pdf.SetFillColor(220, 220, 220)
@@ -323,6 +373,7 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 		pdf.SetFont("Arial", "", 10)
 		for count := 0; count < rowsPerPage && rowIndex < len(dataRows); count++ {
 			row := dataRows[rowIndex]
+			pdf.SetX(marginX)
 			for i, cell := range row {
 				align := "L"
 				if i >= 2 && i <= 6 || cell == "-" || i == 7 {
@@ -344,4 +395,3 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 	c.Set("Content-Disposition", "attachment; filename=intern_attendance.pdf")
 	return c.Send(buf.Bytes())
 }
-
