@@ -66,7 +66,7 @@ type Intern struct {
 	HandlerID        *uint    `json:"handler_id"`
 	Course           string  `json:"course"`
 	OjtHoursRequired int     `json:"ojt_hours_required"`
-	OjtHoursRendered string     `json:"ojt_hours_rendered"`
+	OjtHoursRendered string `json:"ojt_hours_rendered,omitempty" gorm:"default:0"`
 	Status           string  `json:"status"`
 	Address          string  `json:"address"`
 

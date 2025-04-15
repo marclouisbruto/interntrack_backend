@@ -109,7 +109,11 @@ func RegisterIntern(c *fiber.Ctx) error {
 		req.Intern.UserID = req.User.ID
 
 		// ✅ Set default status
+		// ✅ Set default status and ojt_hours_rendered
 		req.Intern.Status = "Pending"
+		if req.Intern.OjtHoursRendered == "" {
+			req.Intern.OjtHoursRendered = "0"
+		}
 
 		// Insert intern
 		if err := tx.Create(&req.Intern).Error; err != nil {
