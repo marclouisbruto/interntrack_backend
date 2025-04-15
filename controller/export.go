@@ -11,20 +11,20 @@ import (
 )
 
 // Struct for exporting intern data
-// Struct for exporting intern data
 type InternInfo struct {
-	ID             int
-	CustomInternID string
-	FirstName      string
-	MiddleName     string
-	LastName       string
-	SuffixName     string
-	Email          string
-	SupervisorID   *int
-	HandlerID      *int
-	SchoolName     string
-	Course         string
-	PhoneNumber    string
+	ID               int
+	CustomInternID   string
+	FirstName        string
+	MiddleName       string
+	LastName         string
+	SuffixName       string
+	Email            string
+	SupervisorID     *int
+	HandlerID        *int
+	SchoolName       string
+	Course           string
+	PhoneNumber      string
+	OjtHoursRequired string
 }
 
 // Helper function to format full name
@@ -48,8 +48,8 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 	err := middleware.DBConn.Table("users").
 		Select(`users.id AS id, interns.custom_intern_id, users.first_name, users.middle_name, users.last_name, 
 	        users.suffix_name, users.email, interns.supervisor_id, handlers.id AS handler_id,
-			interns.school_name, interns.course, users.phone_number`).
-		Joins("JOIN interns ON users.id = interns.id").
+			interns.school_name, interns.course, users.phone_number, interns.ojt_hours_required`).
+		Joins("JOIN interns ON users.id = interns.user_id").
 		Joins("LEFT JOIN handlers ON interns.handler_id = handlers.id").
 		Where("users.role_id = ? AND interns.custom_intern_id IS NOT NULL AND interns.custom_intern_id != ''", 2).
 		Order("users.id ASC").
@@ -117,7 +117,8 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 	pdf.SetFont("Arial", "", 11)
 
 	// Table headers
-	headers := []string{"No.", "Custom ID", "Full Name", "Email", "School Name", "Course", "Phone", "Supervisor/Handler", "Department"}
+	// Table headers
+	headers := []string{"No.", "Custom ID", "Full Name", "Email", "School Name", "Course", "Phone", "Total Hours", "Supervisor/Handler", "Department"}
 
 	// Prepare data rows
 	dataRows := [][]string{}
@@ -139,6 +140,7 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 			}
 		}
 
+		// Add OjtHoursRequired as an integer
 		row := []string{
 			fmt.Sprintf("%d", i+1),
 			intern.CustomInternID,
@@ -147,6 +149,7 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 			intern.SchoolName,
 			intern.Course,
 			intern.PhoneNumber,
+			intern.OjtHoursRequired, // Added OJT Required Hours here as an integer
 			assignedName,
 			assignedDept,
 		}
@@ -173,6 +176,8 @@ func ExportDataToPDF(c *fiber.Ctx) error {
 	for _, w := range colWidths {
 		totalTableWidth += w
 	}
+
+	// Page layout (remaining code stays the same)
 
 	const internsPerPage = 20
 	totalPages := (len(dataRows)-1)/internsPerPage + 1
@@ -394,4 +399,81 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 	c.Set("Content-Type", "application/pdf")
 	c.Set("Content-Disposition", "attachment; filename=intern_attendance.pdf")
 	return c.Send(buf.Bytes())
+}
+
+// PRINT DTR SHEET OF INTERNS
+func ExportDTRSheetToPDF(c *fiber.Ctx) error {
+	InternID := c.Params("id")
+	if InternID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing id"})
+	}
+
+	var intern model.Intern
+	err := middleware.DBConn.Preload("User").
+		Preload("Supervisor.User").
+		Preload("DtrEntries").
+		Where("id = ?", InternID).
+		First(&intern).Error
+
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Intern not found"})
+	}
+
+	// Create PDF
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+	pdf.SetFont("Arial", "B", 14)
+	pdf.Cell(190, 10, "DAILY TIME RECORD SHEET")
+	pdf.Ln(12)
+
+	// Intern Info
+	pdf.SetFont("Arial", "", 12)
+	pdf.Cell(100, 10, fmt.Sprintf("Name: %s %s", intern.User.FirstName, intern.User.LastName))
+	pdf.Cell(100, 10, fmt.Sprintf("Supervisor: %s %s", intern.Supervisor.User.FirstName, intern.Supervisor.User.LastName))
+	pdf.Ln(8)
+	pdf.Cell(100, 10, fmt.Sprintf("School: %s", intern.SchoolName))
+	pdf.Cell(100, 10, fmt.Sprintf("Course: %s", intern.Course))
+	pdf.Ln(8)
+	pdf.Cell(100, 10, fmt.Sprintf("Required Hours: %d", intern.OjtHoursRequired))
+	pdf.Cell(100, 10, fmt.Sprintf("Rendered Hours: %s", intern.OjtHoursRendered))
+	pdf.Ln(12)
+
+	// Table Header
+	pdf.SetFont("Arial", "B", 10)
+	pdf.Cell(20, 8, "Day")
+	pdf.Cell(30, 8, "Morning In")
+	pdf.Cell(30, 8, "Morning Out")
+	pdf.Cell(30, 8, "Afternoon In")
+	pdf.Cell(30, 8, "Afternoon Out")
+	pdf.Cell(30, 8, "Total Hours")
+	pdf.Ln(8)
+
+	pdf.SetFont("Arial", "", 10)
+	for _, dtr := range intern.DtrEntries {
+		day := dtr.CreatedAt.Format("Jan 02")
+		pdf.Cell(20, 8, day)
+		pdf.Cell(30, 8, dtr.TimeInAM)
+		pdf.Cell(30, 8, dtr.TimeOutAM)
+		pdf.Cell(30, 8, dtr.TimeInPM)
+		pdf.Cell(30, 8, dtr.TimeOutPM)
+		pdf.Cell(30, 8, dtr.TotalHours)
+		pdf.Ln(8)
+	}
+
+	// Signature
+	pdf.Ln(15)
+	pdf.Cell(180, 10, "I hereby certify that the above records are true and correct.")
+	pdf.Ln(15)
+	pdf.Cell(100, 10, "EMPLOYEE'S SIGNATURE: _______________________")
+
+	// Export PDF to bytes
+	var buf bytes.Buffer
+	err = pdf.Output(&buf)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate PDF"})
+	}
+
+	c.Set("Content-Type", "application/pdf")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s_dtr_sheet.pdf", InternID))
+	return c.SendStream(&buf)
 }

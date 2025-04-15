@@ -89,9 +89,9 @@ func AppRoutes(app *fiber.App) {
 	//EXORT
 	internTrack.Get("/export/info", controller.ExportDataToPDF) // Export data to PDF
 	internTrack.Get("/export/attendance", controller.ExportInternAttendanceToPDF) // Export attendance to PDF
+	internTrack.Get("/printdtr/:id", controller.ExportDTRSheetToPDF)
 
 	// Route for attendance status
-	// internTrack = app.Group("/show/analytics")
 	internTrack.Get("/attendance/check-status/:status", controller.CheckStatus)
 	internTrack.Get("/analytics/frequent-late", controller.CheckWeeklyLateInterns)
 	internTrack.Get("/analytics/frequent-late/:week", controller.CheckWeeklyLateInterns)
@@ -99,4 +99,7 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Get("/dtr/monthly-status/:week", controller.CheckMonthlyAttendance)
 	internTrack.Get("/dtr-entries", controller.GetAllDTREntries)
 	internTrack.Get("/analytics/school-count", controller.DataAnalyticsSchoolCount)
+
+
+	internTrack.Get("/getallattendance/:date", controller.GetInternAttendanceSummary)
 }
