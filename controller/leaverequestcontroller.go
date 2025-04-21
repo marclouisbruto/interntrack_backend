@@ -1,10 +1,13 @@
 package controller
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
+	"io"
 	"log"
 	"path/filepath"
 	"strconv"
@@ -24,6 +27,7 @@ func CreateLeaveRequest(c *fiber.Ctx) error {
 		})
 	}
 	reason := c.FormValue("reason")
+	leaveDateStr := c.FormValue("leave_date")
 
 	if internId == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -37,8 +41,25 @@ func CreateLeaveRequest(c *fiber.Ctx) error {
 		})
 	}
 
+	if leaveDateStr == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Leave date is required",
+		})
+	}
+
+	// Parse leaveDate with time zeroed (midnight)
+	leaveDate, err := time.Parse("2006-01-02", leaveDateStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid leave date format. Use YYYY-MM-DD.",
+		})
+	}
+
+	// Format the date to MM-DD-YYYY
+	formattedDate := leaveDate.Format("01-02-2006")
+
 	file, err := c.FormFile("excuse_letter")
-	var filePathStr string
+	var base64Str string
 
 	if err == nil {
 		allowedExtensions := map[string]bool{
@@ -46,31 +67,39 @@ func CreateLeaveRequest(c *fiber.Ctx) error {
 			".docx": true,
 			".jpg":  true,
 			".png":  true,
+			".jpeg": true,
 		}
 
 		ext := filepath.Ext(file.Filename)
-
 		if !allowedExtensions[ext] {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"message": "Invalid file format. Only PDF, DOCX, JPG, and PNG allowed.",
 			})
 		}
 
-		filename := fmt.Sprintf("excuse_%d_%d%s", time.Now().Unix(), internId, ext)
-		filePathStr = filepath.Join("uploads/excuse_letters", filename)
-
-		if err := c.SaveFile(file, filePathStr); err != nil {
+		fileData, err := file.Open()
+		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"message": "Unable to save file.",
+				"message": "Failed to open file.",
+			})
+		}
+		defer fileData.Close()
+
+		buffer := bytes.NewBuffer(nil)
+		if _, err := io.Copy(buffer, fileData); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"message": "Error reading file content.",
 			})
 		}
 
+		base64Str = base64.StdEncoding.EncodeToString(buffer.Bytes())
 	}
 
 	leaveRequest := model.LeaveRequest{
 		InternID:     uint(internId),
 		Reason:       reason,
-		ExcuseLetter: filePathStr,
+		LeaveDate:    formattedDate, // Save date as formatted string
+		ExcuseLetter: base64Str, // Save as base64 string
 		Status:       "Pending",
 	}
 
@@ -80,11 +109,9 @@ func CreateLeaveRequest(c *fiber.Ctx) error {
 		})
 	}
 
-	// Preload Intern details
 	if err := middleware.DBConn.Preload("Intern").Preload("Intern.User").
-	Preload("Intern.User.Role").
-	Preload("Intern.Supervisor").Preload("Intern.Supervisor.User").Preload("Intern.Supervisor.User.Role").
-
+		Preload("Intern.User.Role").
+		Preload("Intern.Supervisor").Preload("Intern.Supervisor.User").Preload("Intern.Supervisor.User.Role").
 		First(&leaveRequest, leaveRequest.ID).Error; err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "Failed to load intern details",
@@ -97,6 +124,7 @@ func CreateLeaveRequest(c *fiber.Ctx) error {
 		Data:    leaveRequest,
 	})
 }
+
 
 
 // PANG APPROVE NG LEAVE REQUEST

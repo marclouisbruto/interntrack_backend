@@ -258,6 +258,7 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 			dtr_entries.time_in_am, dtr_entries.time_out_am, dtr_entries.time_in_pm, dtr_entries.time_out_pm`).
 		Joins("JOIN interns ON dtr_entries.intern_id = interns.id").
 		Where("interns.custom_intern_id != ''").
+		Order("interns.custom_intern_id ASC").
 		Order("dtr_entries.month ASC").
 		Scan(&records).Error
 	if err != nil {
@@ -381,11 +382,12 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 			pdf.SetX(marginX)
 			for i, cell := range row {
 				align := "L"
-				if i >= 2 && i <= 6 || cell == "-" || i == 7 {
+				if i == 0 || (i >= 2 && i <= 6) || cell == "-" || i == 7 {
 					align = "C"
 				}
 				pdf.CellFormat(colWidths[i], 8, cell, "1", 0, align, false, 0, "")
 			}
+
 			pdf.Ln(-1)
 			rowIndex++
 		}
@@ -397,7 +399,7 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 	}
 
 	c.Set("Content-Type", "application/pdf")
-	c.Set("Content-Disposition", "attachment; filename=intern_attendance.pdf")
+	c.Set("Content-Disposition", "attachment; filename=Intern_Attendance.pdf")
 	return c.Send(buf.Bytes())
 }
 

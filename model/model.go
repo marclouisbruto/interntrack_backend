@@ -63,10 +63,10 @@ type Intern struct {
 	StudentID        string  `json:"student_id"`
 	SchoolName       string  `json:"school_name"`
 	SupervisorID     uint    `json:"supervisor_id"`
-	HandlerID        *uint    `json:"handler_id"`
+	HandlerID        *uint   `json:"handler_id"`
 	Course           string  `json:"course"`
-	OjtHoursRequired int  `json:"ojt_hours_required"`
-	OjtHoursRendered string `json:"ojt_hours_rendered,omitempty" gorm:"default:0"`
+	OjtHoursRequired int     `json:"ojt_hours_required"`
+	OjtHoursRendered string  `json:"ojt_hours_rendered,omitempty" gorm:"default:0"`
 	Status           string  `json:"status"`
 	Address          string  `json:"address"`
 
@@ -89,14 +89,14 @@ type QRCode struct {
 
 type DTREntry struct {
 	gorm.Model
-	UserID       uint    `json:"user_id"`
-	InternID     uint    `json:"intern_id"`
-	SupervisorID uint    `json:"supervisor_id"`
-	Month        string  `json:"month"`
-	TimeInAM     string  `json:"time_in_am"`
-	TimeOutAM    string  `json:"time_out_am"`
-	TimeInPM     string  `json:"time_in_pm"`
-	TimeOutPM    string  `json:"time_out_pm"`
+	UserID       uint   `json:"user_id"`
+	InternID     uint   `json:"intern_id"`
+	SupervisorID uint   `json:"supervisor_id"`
+	Month        string `json:"month"`
+	TimeInAM     string `json:"time_in_am"`
+	TimeOutAM    string `json:"time_out_am"`
+	TimeInPM     string `json:"time_in_pm"`
+	TimeOutPM    string `json:"time_out_pm"`
 	TotalHours   string `json:"total_hours"`
 
 	Intern     Intern     `gorm:"foreignKey:InternID"`
@@ -106,9 +106,10 @@ type DTREntry struct {
 type LeaveRequest struct {
 	gorm.Model
 	InternID     uint   `json:"intern_id" gorm:"not null;constraint:OnDelete:CASCADE"`
+	LeaveDate    string `json:"leave_date"`
 	Reason       string `json:"reason" gorm:"type:text;not null"`
-	ExcuseLetter string `json:"excuse_letter,omitempty"` // File path or URL (optional)
 	Status       string `json:"status" gorm:"type:varchar(20);default:'Pending'"`
+	ExcuseLetter string `json:"excuse_letter,omitempty"` // File path or URL (optional)
 
 	Intern Intern `gorm:"foreignKey:InternID"` // Relationship to Interns table
 }
