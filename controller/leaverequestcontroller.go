@@ -6,7 +6,6 @@ import (
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
 	"log"
-	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -99,29 +98,6 @@ func CreateLeaveRequest(c *fiber.Ctx) error {
 	})
 }
 
-// View excuse letter
-func ViewExcuseLetter(c *fiber.Ctx) error {
-	// Get the filename from the URL parameter
-	filename := c.Params("filename")
-
-	// Construct the file path
-	filePath := filepath.Join("uploads/excuse_letters", filename)
-
-	// Check if the file exists
-	if _, err := os.Stat(filePath); err != nil {
-		if os.IsNotExist(err) {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"message": "File not found",
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Error checking file existence",
-		})
-	}
-
-	// Return the file
-	return c.SendFile(filePath)
-}
 
 // PANG APPROVE NG LEAVE REQUEST
 func ApproveLeaveRequest(c *fiber.Ctx) error {
@@ -185,4 +161,167 @@ func ApproveLeaveRequest(c *fiber.Ctx) error {
 		"message": "Leave request status updated and notification sent",
 	})
 }
+
+func GetLeaveRequests(c *fiber.Ctx) error {
+	var leaveRequests []model.LeaveRequest
+
+	status := c.Params("status")
+	internIDStr := c.Params("intern_id")
+
+	query := middleware.DBConn.
+		Preload("Intern").
+		Preload("Intern.User").
+		Preload("Intern.User.Role").
+		Preload("Intern.Supervisor").
+		Preload("Intern.Supervisor.User").
+		Preload("Intern.Supervisor.User.Role")
+
+	// Apply filters based on params
+	if status != "" && status != "intern" {
+		query = query.Where("status = ?", status)
+	}
+
+	if internIDStr != "" {
+		internID, err := strconv.Atoi(internIDStr)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": "Invalid intern ID",
+			})
+		}
+		query = query.Where("intern_id = ?", internID)
+	}
+
+	if err := query.Find(&leaveRequests).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to fetch leave requests",
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Leave requests fetched successfully",
+		Data:    leaveRequests,
+	})
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// func GetAllLeaveRequests(c *fiber.Ctx) error {
+// 	var leaveRequests []model.LeaveRequest
+// 	if err := middleware.DBConn.
+// 		Preload("Intern").
+// 		Preload("Intern.User").
+// 		Preload("Intern.User.Role").
+// 		Preload("Intern.Supervisor").
+// 		Preload("Intern.Supervisor.User").
+// 		Preload("Intern.Supervisor.User.Role").
+// 		Find(&leaveRequests).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+// 			"message": "Failed to fetch leave requests",
+// 		})
+// 	}
+// 	return c.JSON(response.ResponseModel{
+// 		RetCode: "200",
+// 		Message: "Leave requests fetched successfully",
+// 		Data:    leaveRequests,
+// 	})
+// }
+
+// func GetLeaveRequestsByStatus(c *fiber.Ctx) error {
+// 	status := c.Params("status")
+// 	var leaveRequests []model.LeaveRequest
+
+// 	if err := middleware.DBConn.
+// 		Where("status = ?", status).
+// 		Preload("Intern").Preload("Intern.User").
+// 		Preload("Intern.User.Role").
+// 		Preload("Intern.Supervisor").Preload("Intern.Supervisor.User").
+// 		Preload("Intern.Supervisor.User.Role").
+// 		Find(&leaveRequests).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+// 			"message": "Failed to fetch leave requests",
+// 		})
+// 	}
+
+// 	return c.JSON(response.ResponseModel{
+// 		RetCode: "200",
+// 		Message: "Leave requests fetched successfully",
+// 		Data:    leaveRequests,
+// 	})
+// }
+
+// func GetLeaveRequestsByIntern(c *fiber.Ctx) error {
+// 	internIDStr := c.Params("intern_id")
+// 	internID, err := strconv.Atoi(internIDStr)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+// 			"message": "Invalid intern ID",
+// 		})
+// 	}
+
+// 	var leaveRequests []model.LeaveRequest
+
+// 	if err := middleware.DBConn.
+// 		Where("intern_id = ?", internID).
+// 		Preload("Intern").Preload("Intern.User").
+// 		Preload("Intern.User.Role").
+// 		Preload("Intern.Supervisor").Preload("Intern.Supervisor.User").
+// 		Preload("Intern.Supervisor.User.Role").
+// 		Find(&leaveRequests).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+// 			"message": "Failed to fetch leave requests",
+// 		})
+// 	}
+
+// 	return c.JSON(response.ResponseModel{
+// 		RetCode: "200",
+// 		Message: "Leave requests fetched successfully",
+// 		Data:    leaveRequests,
+// 	})
+// }
+
+// func GetLeaveRequestsByStatusAndIntern(c *fiber.Ctx) error {
+// 	status := c.Params("status")
+// 	internIDStr := c.Params("intern_id")
+// 	internID, err := strconv.Atoi(internIDStr)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+// 			"message": "Invalid intern ID",
+// 		})
+// 	}
+
+// 	var leaveRequests []model.LeaveRequest
+
+// 	if err := middleware.DBConn.
+// 		Where("status = ? AND intern_id = ?", status, internID).
+// 		Preload("Intern").Preload("Intern.User").
+// 		Preload("Intern.User.Role").
+// 		Preload("Intern.Supervisor").Preload("Intern.Supervisor.User").
+// 		Preload("Intern.Supervisor.User.Role").
+// 		Find(&leaveRequests).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+// 			"message": "Failed to fetch leave requests",
+// 		})
+// 	}
+
+// 	return c.JSON(response.ResponseModel{
+// 		RetCode: "200",
+// 		Message: "Leave requests fetched successfully",
+// 		Data:    leaveRequests,
+// 	})
+// }
 

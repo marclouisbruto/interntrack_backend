@@ -56,13 +56,17 @@ func AppRoutes(app *fiber.App) {
 	app.Post("/verify-code", controller.VerifyResetCode)
 	app.Post("/reset-password", controller.ResetPassword)
 
-	//Add leave request
+	// leave request
 	internTrack.Post("/leave-request/upload", controller.CreateLeaveRequest)
 	internTrack.Static("/uploads/excuse_letters", "./uploads/excuse_letters") //tumutulong sa pang view or pathing ng image
-	internTrack.Get("/view-excuse-letter/:filename", controller.ViewExcuseLetter)
-
+	internTrack.Get("/leave-requests", controller.GetLeaveRequests)
+	internTrack.Get("/leave-requests/:status", controller.GetLeaveRequests)
+	internTrack.Get("/leave-requests/intern/:intern_id", controller.GetLeaveRequests)
+	internTrack.Get("/leave-requests/:status/intern/:intern_id", controller.GetLeaveRequests)
+	
 	//SEARCH
 	internTrack.Get("/interns/search/:value", controller.SearchInternsByParam)
+	internTrack.Get("/sort-school/:school_name", controller.GetInternsBySchoolName)
 
 	//APPROVE STATUS
 	internTrack.Put("/user/status/intern/:ids", controller.ApproveInterns)       //INTERNS
@@ -80,9 +84,10 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Post("/generate-qr", controller.InsertAllDataQRCode)
 	internTrack.Post("/scan-qrcode", controller.ScanQRCode)
 	internTrack.Post("/default/scan-qrcode", controller.DefaultTime)
-	internTrack.Put("/update-dtr-update_out_am/:id", controller.UpdateTimeOutAM)
+	internTrack.Put("/update-dtr-update_out_am", controller.UpdateTimeOutAM)
 	internTrack.Put("/update-dtr-update_in_pm/:id", controller.UpdateTimeInPM)
-	internTrack.Put("/update-dtr-update_out_pm/:id", controller.UpdateTimeOutPM)
+	internTrack.Put("/update-dtr-update_out_pm", controller.UpdateTimeOutPM)
+
 
 
 
@@ -100,6 +105,10 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Get("/dtr-entries", controller.GetAllDTREntries)
 	internTrack.Get("/analytics/school-count", controller.DataAnalyticsSchoolCount)
 
-
 	internTrack.Get("/getallattendance/:date", controller.GetInternAttendanceSummary)
+
+	internTrack.Post("/trigger-absent-dtr", func(c *fiber.Ctx) error {
+		go controller.AutoInsertAbsentDTR()
+		return c.SendString("Absent DTR trigger called")
+	})
 }

@@ -477,6 +477,39 @@ func SearchInternsByParam(c *fiber.Ctx) error {
 	})
 }
 
+//SORT PER SCHOOL
+func GetInternsBySchoolName(c *fiber.Ctx) error {
+	schoolName := c.Params("school_name")
+
+	if schoolName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "School name is required",
+		})
+	}
+
+	var interns []model.Intern
+
+	if err := middleware.DBConn.
+		Preload("User").
+		Where("school_name ILIKE ?", "%"+schoolName+"%").
+		Order("school_name ASC").
+		Find(&interns).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to retrieve interns by school name",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(response.ResponseModel{
+		RetCode: "200",
+		Message: "Interns filtered by school_name successfully.",
+		Data:    interns,
+	})
+}
+
+
+
+
 //####################################
 //==========PROFILE PICTURE===========
 //####################################

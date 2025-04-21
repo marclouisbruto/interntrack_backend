@@ -124,7 +124,72 @@ func CheckStatus(c *fiber.Ctx) error {
 	loc, _ := time.LoadLocation("Asia/Manila")
 	today := time.Now().In(loc).Format("2006-01-02")
 
-	// Fetch only today's entries with Intern and User data
+	// Handle "absent" case
+	if status == "absent" {
+		// Get all interns with user info
+		var allInterns []model.Intern
+		if err := middleware.DBConn.Preload("User").Find(&allInterns).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"message": "Failed to fetch interns",
+				"error":   err.Error(),
+			})
+		}
+
+		// Get intern_ids with DTR entries today
+		var presentIDs []uint
+		if err := middleware.DBConn.
+			Model(&model.DTREntry{}).
+			Where("DATE(created_at) = ?", today).
+			Pluck("DISTINCT intern_id", &presentIDs).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"message": "Failed to fetch today's DTR entries",
+				"error":   err.Error(),
+			})
+		}
+
+		presentMap := make(map[uint]bool)
+		for _, id := range presentIDs {
+			presentMap[id] = true
+		}
+
+		var absentInterns []InternStatus
+		for _, intern := range allInterns {
+			if !presentMap[intern.ID] {
+				user := intern.User
+				middleInitial := ""
+				if len(user.MiddleName) > 0 {
+					middleInitial = string(user.MiddleName[0]) + "."
+				}
+				fullName := fmt.Sprintf("%s %s %s %s",
+					user.FirstName,
+					middleInitial,
+					user.LastName,
+					user.SuffixName,
+				)
+
+				absentInterns = append(absentInterns, InternStatus{
+					InternID: intern.ID,
+					Name:     strings.TrimSpace(fullName),
+				})
+			}
+		}
+
+		if len(absentInterns) == 0 {
+			return c.JSON(fiber.Map{
+				"message": "No interns are absent today.",
+				"retCode": "200",
+			})
+		}
+
+		return c.JSON(fiber.Map{
+			"data":     absentInterns,
+			"retCode":  "200",
+			"message":  "Absent interns fetched successfully.",
+			"total_of": len(absentInterns),
+		})
+	}
+
+	// Fetch today's entries with Intern and User data
 	if err := middleware.DBConn.
 		Preload("Intern.User").
 		Where("DATE(created_at) = ?", today).
@@ -137,11 +202,8 @@ func CheckStatus(c *fiber.Ctx) error {
 	}
 
 	var filteredInterns []InternStatus
-	var presentInternIDs []uint
 
 	for _, dtrEntry := range dtrEntries {
-		presentInternIDs = append(presentInternIDs, dtrEntry.InternID)
-
 		var include bool
 		switch status {
 		case "late":
@@ -154,18 +216,16 @@ func CheckStatus(c *fiber.Ctx) error {
 			include = checkHalfDay(dtrEntry.TimeInAM, dtrEntry.TimeInPM) == "Full Day"
 		default:
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"message": "Invalid status. Use one of: late, half-day-am, half-day-pm, full-day.",
+				"message": "Invalid status. Use one of: late, half-day-am, half-day-pm, full-day, absent.",
 			})
 		}
 
 		if include {
 			user := dtrEntry.Intern.User
-
 			middleInitial := ""
 			if len(user.MiddleName) > 0 {
 				middleInitial = string(user.MiddleName[0]) + "."
 			}
-
 			fullName := fmt.Sprintf("%s %s %s %s",
 				user.FirstName,
 				middleInitial,
@@ -173,7 +233,6 @@ func CheckStatus(c *fiber.Ctx) error {
 				user.SuffixName,
 			)
 
-			// Get OJT Hours Required
 			ojtHoursRequired := dtrEntry.Intern.OjtHoursRequired
 
 			// Fetch all today's DTR entries for this intern
@@ -185,7 +244,6 @@ func CheckStatus(c *fiber.Ctx) error {
 				continue
 			}
 
-			// Sum today's TotalHours
 			var totalTodayDuration time.Duration
 			for _, e := range internEntries {
 				parts := strings.Split(e.TotalHours, ":")
@@ -199,7 +257,6 @@ func CheckStatus(c *fiber.Ctx) error {
 				}
 			}
 
-			// Convert OjtHoursRendered from string to duration
 			ojtRenderedParts := strings.Split(dtrEntry.Intern.OjtHoursRendered, ":")
 			var overallRenderedDuration time.Duration
 			if len(ojtRenderedParts) == 3 {
@@ -211,24 +268,20 @@ func CheckStatus(c *fiber.Ctx) error {
 					time.Duration(s)*time.Second
 			}
 
-			// Add today's TotalHours to previously rendered hours
 			totalRendered := overallRenderedDuration + totalTodayDuration
-
-			// Compute remaining hours
 			remaining := time.Duration(ojtHoursRequired)*time.Hour - totalRendered
+
 			remainingStr := fmt.Sprintf("%02d:%02d:%02d",
 				int(remaining.Hours()),
 				int(remaining.Minutes())%60,
 				int(remaining.Seconds())%60,
 			)
-
 			renderedStr := fmt.Sprintf("%02d:%02d:%02d",
 				int(totalRendered.Hours()),
 				int(totalRendered.Minutes())%60,
 				int(totalRendered.Seconds())%60,
 			)
 
-			// Add intern data to response
 			filteredInterns = append(filteredInterns, InternStatus{
 				InternID:         dtrEntry.InternID,
 				Name:             strings.TrimSpace(fullName),
@@ -241,7 +294,6 @@ func CheckStatus(c *fiber.Ctx) error {
 	// Handle no result cases
 	if len(filteredInterns) == 0 {
 		var message string
-
 		switch status {
 		case "late":
 			message = "None of the interns is late."
@@ -250,35 +302,7 @@ func CheckStatus(c *fiber.Ctx) error {
 		case "half-day-pm":
 			message = "No interns are on half-day (PM)."
 		case "full-day":
-			// Get all intern IDs from database
-			var allInterns []model.Intern
-			if err := middleware.DBConn.Find(&allInterns).Error; err != nil {
-				log.Println("Error fetching all interns:", err)
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"message": "Failed to get intern data",
-					"error":   err.Error(),
-				})
-			}
-
-			var absentIDs []uint
-			for _, intern := range allInterns {
-				found := false
-				for _, id := range presentInternIDs {
-					if id == intern.ID {
-						found = true
-						break
-					}
-				}
-				if !found {
-					absentIDs = append(absentIDs, intern.ID)
-				}
-			}
-
-			return c.JSON(fiber.Map{
-				"message":  "Absent interns",
-				"absentID": absentIDs,
-				"retCode":  "200",
-			})
+			message = "No interns completed a full day."
 		}
 
 		return c.JSON(fiber.Map{
@@ -287,7 +311,6 @@ func CheckStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	// Return filtered results
 	return c.JSON(fiber.Map{
 		"data":     filteredInterns,
 		"retCode":  "200",
