@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// DefaultTime sets default TimeInAM for interns
 func DefaultTime(c *fiber.Ctx) error {
 	type RequestBody struct {
 		Interns []struct {
@@ -53,6 +54,12 @@ func DefaultTime(c *fiber.Ctx) error {
 			})
 		}
 
+		if internData.SupervisorID == 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": fmt.Sprintf("Supervisor ID missing for intern ID %d", intern.Intern.ID),
+			})
+		}
+
 		if intern.User.FirstName != internData.User.FirstName ||
 			intern.User.MiddleName != internData.User.MiddleName ||
 			intern.User.LastName != internData.User.LastName ||
@@ -73,7 +80,7 @@ func DefaultTime(c *fiber.Ctx) error {
 		}
 
 		currentMonth := time.Now().Format("01-02-06")
-		supervisorID := uint(1)
+		supervisorID := internData.SupervisorID
 
 		dtrEntry := model.DTREntry{
 			UserID:       internData.UserID,
@@ -156,6 +163,12 @@ func ScanQRCode(c *fiber.Ctx) error {
 			})
 		}
 
+		if internData.SupervisorID == 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": fmt.Sprintf("Supervisor ID missing for intern ID %d", intern.Intern.ID),
+			})
+		}
+
 		if intern.User.FirstName != internData.User.FirstName ||
 			intern.User.MiddleName != internData.User.MiddleName ||
 			intern.User.LastName != internData.User.LastName ||
@@ -176,7 +189,7 @@ func ScanQRCode(c *fiber.Ctx) error {
 		}
 
 		currentMonth := currentTime.Format("01-02-06")
-		supervisorID := uint(1)
+		supervisorID := internData.SupervisorID
 
 		timeInAMStart := "08:00:00"
 		timeInAMEnd := "12:00:00"
@@ -573,21 +586,25 @@ func AutoInsertAbsentDTR() {
 	}
 
 	for _, intern := range interns {
+		if intern.SupervisorID == 0 {
+			fmt.Printf("Skipping intern ID %d due to missing Supervisor ID\n", intern.ID)
+			continue
+		}
+
 		var existingEntry model.DTREntry
 		err := middleware.DBConn.
 			Where("intern_id = ? AND DATE(created_at) = ?", intern.ID, currentDate).
 			First(&existingEntry).Error
 
-		// Only insert if no entry exists today
 		if err != nil {
 			absentEntry := model.DTREntry{
 				UserID:       intern.UserID,
 				InternID:     intern.ID,
 				SupervisorID: intern.SupervisorID,
 				Month:        currentMonth,
-				TimeInAM:     "", // No scan
+				TimeInAM:     "",
 				TimeOutAM:    "",
-				TimeInPM:     "", // No scan
+				TimeInPM:     "",
 				TimeOutPM:    "",
 				TotalHours:   "00:00:00",
 			}
@@ -601,4 +618,5 @@ func AutoInsertAbsentDTR() {
 			fmt.Printf("DTR already exists for intern ID %d, skipping insert.\n", intern.ID)
 		}
 	}
+
 }
