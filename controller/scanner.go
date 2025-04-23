@@ -191,7 +191,7 @@ func ScanQRCode(c *fiber.Ctx) error {
 		currentMonth := currentTime.Format("01-02-06")
 		supervisorID := internData.SupervisorID
 
-		timeInAMStart := "08:00:00"
+		timeInAMStart := "06:00:00"
 		timeInAMEnd := "12:00:00"
 		timeInPMStart := "13:00:00"
 		timeInPMEnd := "17:00:00"
