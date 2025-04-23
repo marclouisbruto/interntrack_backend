@@ -255,11 +255,11 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 
 	err := middleware.DBConn.Table("dtr_entries").
 		Select(`interns.custom_intern_id, interns.supervisor_id, interns.handler_id, dtr_entries.month, 
-			dtr_entries.time_in_am, dtr_entries.time_out_am, dtr_entries.time_in_pm, dtr_entries.time_out_pm`).
+		dtr_entries.time_in_am, dtr_entries.time_out_am, dtr_entries.time_in_pm, dtr_entries.time_out_pm`).
 		Joins("JOIN interns ON dtr_entries.intern_id = interns.id").
 		Where("interns.custom_intern_id != ''").
+		Order("dtr_entries.created_at ASC"). // ✅ Use the actual date column here
 		Order("interns.custom_intern_id ASC").
-		Order("dtr_entries.month ASC").
 		Scan(&records).Error
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to fetch attendance: %v", err))
