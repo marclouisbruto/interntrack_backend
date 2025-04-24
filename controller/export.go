@@ -303,7 +303,7 @@ func ExportInternAttendanceToPDF(c *fiber.Ctx) error {
 	for _, w := range colWidths {
 		totalTableWidth += w
 	}
-
+	
 	dataRows := [][]string{}
 	for _, r := range records {
 		assigned := "N/A"

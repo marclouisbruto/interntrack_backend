@@ -4,9 +4,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
-	"os"
-	"time"
 
 	"intern_template_v1/middleware"
 	"intern_template_v1/model"
@@ -19,7 +16,7 @@ import (
 )
 
 type InternQR struct {
-	User   model.User  ` json:"user"`
+	User   model.User   `json:"user"`
 	Intern model.Intern `json:"intern"`
 }
 
@@ -31,113 +28,44 @@ func loadEnv() error {
 	return nil
 }
 
-// Get current time in Asia/Manila timezone
-func getManilaTime() time.Time {
-	loc, _ := time.LoadLocation("Asia/Manila")
-	return time.Now().In(loc)
+// Convert QR code to base64 directly
+func generateQRCodeBase64(data string) (string, error) {
+	// Generate the QR code and encode it to base64
+	qrCode, err := qrcode.Encode(data, qrcode.Medium, 512)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate QR code: %w", err)
+	}
+
+	// Encode the QR code image to base64
+	base64QRCode := base64.StdEncoding.EncodeToString(qrCode)
+
+	return base64QRCode, nil
 }
 
-
-// Convert image file to base64
-func fileToBase64(fileName string) (string, error) {
-	// Open the file
-	file, err := os.Open(fileName)
-	if err != nil {
-		return "", fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	// Read the file content
-	fileContent, err := os.ReadFile(fileName)
-	if err != nil {
-		return "", fmt.Errorf("failed to read file: %w", err)
-	}
-
-	// Encode the file content to base64
-	base64Str := base64.StdEncoding.EncodeToString(fileContent)
-
-	return base64Str, nil
-}
-
-// GenerateQRCode generates a QR Code and saves it in the database
-// GenerateQRCode generates a QR Code and saves it in the database
-func GenerateQRCode(db *gorm.DB, internID uint, firstName, middleName, lastName, advisory string) (string, string, error) {
-	// Ensure environment variables are loaded
-	if err := loadEnv(); err != nil {
-		return "", "", err
-	}
-
-	// Combine user data into a single string for QR code content
-	data := fmt.Sprintf(
-		"InternID: %d\nFirstName: %s\nMiddleName: %s\nLastName: %s\nAdvisory: %s",
-		internID, firstName, middleName, lastName, advisory,
-	)
-
-	// Debugging: Print the data before generating QR Code
-	log.Println("Generating QR Code with data:", data)
-
-	// Check if the QR code already exists in the database
-	var existingQRCode model.QRCode
-	if err := db.Where("intern_id = ?", internID).First(&existingQRCode).Error; err == nil {
-		// QR code already exists for this intern
-		return "", "", fmt.Errorf("QRCode already exists")
-	}
-
-	// Generate QR code and save it as a PNG file
-	fileName := fmt.Sprintf("%d_qrcode.png", internID)
-	err := qrcode.WriteFile(data, qrcode.Medium, 512, fileName)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to generate QR code: %w", err)
-	}
-
-	// Debugging: Check if the file exists before converting to base64
-	log.Println("Checking if file exists at:", fileName)
-	if _, err := os.Stat(fileName); os.IsNotExist(err) {
-		log.Println("QR Code file was not created at:", fileName) // Debugging log
-		return "", "", errors.New("QR code file was not created")
-	} else {
-		log.Println("QR Code file exists at:", fileName) // Debugging log
-	}
-
-	// Convert the QR code image file to base64
-	base64QRCode, err := fileToBase64(fileName)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to convert QR code to base64: %w", err)
-	}
-
-	// Save QR data to the database using GORM
-	qrCode := model.QRCode{
-		InternID:     internID,
-		QRCode:       data,         // Store QR code content
-		Base64QRCode: base64QRCode, // Store base64 string
-	}
-	if err := db.Create(&qrCode).Error; err != nil {
-		return "", "", fmt.Errorf("failed to insert QR code data into the database: %w", err)
-	}
-
-	return data, base64QRCode, nil
-}
-
-// InsertAllDataQRCode handles the QR code generation and storage for intern data
 // InsertAllDataQRCode handles the QR code generation and storage for intern data
 func InsertAllDataQRCode(c *fiber.Ctx) error {
 	req := new(InternQR)
 	if err := c.BodyParser(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": err.Error()})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid input, unable to parse request body", "error": err.Error()})
 	}
 
-	// Validate required fields
-	if req.Intern.ID == 0 || req.User.FirstName == "" || req.User.LastName == "" || req.Intern.SupervisorID == 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Missing required fields"})
-	}
-
-	// Validate InternID is not zero or empty
+	// Validate required fields with more checks
 	if req.Intern.ID == 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "InternID cannot be empty"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Intern ID is required"})
+	}
+	if req.User.FirstName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "First Name is required"})
+	}
+	if req.User.LastName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Last Name is required"})
+	}
+	if req.Intern.SupervisorID == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Supervisor ID is required"})
 	}
 
 	var base64QRCode string
 
+	// Transaction block
 	err := middleware.DBConn.Transaction(func(tx *gorm.DB) error {
 		// Fetch the intern and preload the associated User data
 		var intern model.Intern
@@ -145,11 +73,40 @@ func InsertAllDataQRCode(c *fiber.Ctx) error {
 			return fmt.Errorf("intern with ID %d does not exist: %w", req.Intern.ID, err)
 		}
 
+		// Validate that the SupervisorID in the Intern record matches an existing supervisor
+		var supervisor model.Supervisor
+		if err := tx.First(&supervisor, req.Intern.SupervisorID).Error; err != nil {
+			return fmt.Errorf("supervisor with ID %d does not exist: %w", req.Intern.SupervisorID, err)
+		}
+
+		// Additional validation to ensure data matches
+		if intern.User.FirstName != req.User.FirstName {
+			return fmt.Errorf("first name mismatch for intern ID %d", req.Intern.ID)
+		}
+		if intern.User.MiddleName != req.User.MiddleName {
+			return fmt.Errorf("middle name mismatch for intern ID %d", req.Intern.ID)
+		}
+		if intern.User.LastName != req.User.LastName {
+			return fmt.Errorf("last name mismatch for intern ID %d", req.Intern.ID)
+		}
+		if intern.User.SuffixName != req.User.SuffixName {
+			return fmt.Errorf("suffix name mismatch for intern ID %d", req.Intern.ID)
+		}
+		if intern.Status != req.Intern.Status {
+			return fmt.Errorf("status mismatch for intern ID %d", req.Intern.ID)
+		}
+		if intern.Address != req.Intern.Address {
+			return fmt.Errorf("address mismatch for intern ID %d", req.Intern.ID)
+		}
+		if intern.SupervisorID != req.Intern.SupervisorID {
+			return fmt.Errorf("supervisor ID mismatch for intern ID %d", req.Intern.ID)
+		}
+
 		// Check if QR code already exists for this intern
 		var existingQRCode model.QRCode
 		if err := tx.Where("intern_id = ?", req.Intern.ID).First(&existingQRCode).Error; err == nil {
 			// QR code already exists for this intern
-			return errors.New("QRCode already exists")
+			return fmt.Errorf("QRCode already exists for intern ID %d", req.Intern.ID)
 		}
 
 		// Conditionally append SuffixName
@@ -158,7 +115,7 @@ func InsertAllDataQRCode(c *fiber.Ctx) error {
 			suffixStr = fmt.Sprintf("SuffixName: %s\n", req.User.SuffixName)
 		}
 
-		// Generate and save the QR code
+		// Generate QR code content
 		qrCodeContent := fmt.Sprintf(
 			"FirstName: %s\nMiddleName: %s\nLastName: %s\n%sSupervisorID: %d\nStatus: %s\nAddress: %s",
 			req.User.FirstName,
@@ -170,17 +127,10 @@ func InsertAllDataQRCode(c *fiber.Ctx) error {
 			req.Intern.Address,
 		)
 
-		// Generate and save the QR code to file
-		fileName := fmt.Sprintf("qrs/%d_qrcode.png", req.Intern.ID)
-		err := qrcode.WriteFile(qrCodeContent, qrcode.Medium, 512, fileName)
+		// Generate base64 encoded QR code
+		base64QRCode, err := generateQRCodeBase64(qrCodeContent) // Declare err locally here
 		if err != nil {
 			return fmt.Errorf("failed to generate QR code: %w", err)
-		}
-
-		// Convert the QR code to base64
-		base64QRCode, err = fileToBase64(fileName)
-		if err != nil {
-			return fmt.Errorf("failed to convert QR code to base64: %w", err)
 		}
 
 		// Save the QR code data into the database
@@ -196,10 +146,12 @@ func InsertAllDataQRCode(c *fiber.Ctx) error {
 		return nil
 	})
 
+	// Handle any error during the transaction
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Transaction failed", "error": err.Error()})
 	}
 
+	// Return the response with the generated QR code
 	return c.JSON(response.ResponseModel{
 		RetCode: "200",
 		Message: "QR code and intern data successfully added.",
