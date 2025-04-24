@@ -206,8 +206,8 @@ func GetLeaveRequests(c *fiber.Ctx) error {
 
 	// Apply filters based on params
 	if status != "" && status != "intern" {
-		query = query.Where("status = ?", status)
-	}
+		query = query.Where("status ILIKE ?", status)
+	}	
 
 	if internIDStr != "" {
 		internID, err := strconv.Atoi(internIDStr)
