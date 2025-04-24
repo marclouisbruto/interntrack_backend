@@ -45,7 +45,6 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Put("/user/archive/intern/:ids", controller.ArchiveInterns)       //INTERNS
 	internTrack.Put("/user/archive/supervisor/:id", controller.ArchiveSupervisor) //SUPERVISORS
 
-
 	//LOGIN PAGE
 	app.Post("/login", controller.Login)
 	internTrack.Post("/logout/", controller.Logout)
@@ -63,7 +62,7 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Get("/leave-requests/:status", controller.GetLeaveRequests)
 	internTrack.Get("/leave-requests/intern/:intern_id", controller.GetLeaveRequests)
 	internTrack.Get("/leave-requests/:status/intern/:intern_id", controller.GetLeaveRequests)
-	
+
 	//SEARCH
 	internTrack.Get("/interns/search/:value", controller.SearchInternsByParam)
 	internTrack.Get("/sort-school/:school_name", controller.GetInternsBySchoolName)
@@ -84,15 +83,21 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Post("/generate-qr", controller.InsertAllDataQRCode)
 	internTrack.Post("/scan-qrcode", controller.ScanQRCode)
 	internTrack.Post("/default/scan-qrcode", controller.DefaultTime)
-	internTrack.Put("/update-dtr-update_out_am", controller.UpdateTimeOutAM)
+	internTrack.Put("/update-dtr-update_out_am/:id", controller.UpdateTimeOutAMDefault)
+	internTrack.Put("/update-dtr-update_out_am", controller.UpdateTimeOutAMDefault)
+	internTrack.Put("/update-dtr_out_am/:id", controller.UpdateTimeOutAMCurrent)
 	internTrack.Put("/update-dtr-update_in_pm/:id", controller.UpdateTimeInPM)
+	internTrack.Put("/update-dtr-update_out_pm", controller.UpdateTimeOutPMDefault)
+	internTrack.Put("/update-dtr_out_pm/:id", controller.UpdateTimeOutPM)
 	internTrack.Put("/update-dtr-update_out_pm", controller.UpdateTimeOutPM)
-
-
-
+	
+	internTrack.Post("/trigger-absent-dtr", func(c *fiber.Ctx) error {
+		go controller.AutoInsertAbsentDTR()
+		return c.SendString("Absent DTR trigger called")
+	})
 
 	//EXORT
-	internTrack.Get("/export/info", controller.ExportDataToPDF) // Export data to PDF
+	internTrack.Get("/export/info", controller.ExportDataToPDF)                   // Export data to PDF
 	internTrack.Get("/export/attendance", controller.ExportInternAttendanceToPDF) // Export attendance to PDF
 	internTrack.Get("/printdtr/:id", controller.ExportDTRSheetToPDF)
 
@@ -107,8 +112,4 @@ func AppRoutes(app *fiber.App) {
 
 	internTrack.Get("/getallattendance/:date", controller.GetInternAttendanceSummary)
 
-	internTrack.Post("/trigger-absent-dtr", func(c *fiber.Ctx) error {
-		go controller.AutoInsertAbsentDTR()
-		return c.SendString("Absent DTR trigger called")
-	})
 }
