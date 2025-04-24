@@ -389,120 +389,127 @@ func UpdateTimeOutAMCurrent(c *fiber.Ctx) error {
 	currentTimeStr := currentTime.Format("15:04:05") // Current time in HH:MM:SS format
 	currentDate := currentTime.Format("2006-01-02")  // Current date in YYYY-MM-DD format
 
-	// Get the intern ID from the URL parameter
-	internID := c.Params("id")
-	if internID == "" {
+	// Get the intern IDs from the URL parameter (comma-separated)
+	idsParam := c.Params("ids")
+	if idsParam == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Intern ID is required",
+			"error": "Intern IDs are required",
 		})
 	}
 
-	// Fetch the DTR entry for the intern with the specified ID and current date
-	var dtrEntry model.DTREntry
-	if err := middleware.DBConn.Where("intern_id = ? AND DATE(created_at) = ?", internID, currentDate).First(&dtrEntry).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to fetch DTR entry for intern ID " + internID,
-		})
-	}
+	// Split the IDs into a slice
+	ids := strings.Split(idsParam, ",")
+	var successCount int
+	var errorMessages []string
 
-	// Prevent updating if TimeInAM is missing
-	if dtrEntry.TimeInAM == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fmt.Sprintf("TimeInAM is missing for intern ID %s, cannot set TimeOutAM", internID),
-		})
-	}
+	// Loop over each intern ID and update the TimeOutAM
+	for _, internID := range ids {
+		// Fetch the DTR entry for the intern with the specified ID and current date
+		var dtrEntry model.DTREntry
+		if err := middleware.DBConn.Where("intern_id = ? AND DATE(created_at) = ?", internID, currentDate).First(&dtrEntry).Error; err != nil {
+			errorMessages = append(errorMessages, fmt.Sprintf("Failed to fetch DTR entry for intern ID %s", internID))
+			continue
+		}
 
-	// Prevent updating if TimeOutAM is already set
-	if dtrEntry.TimeOutAM != "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fmt.Sprintf("TimeOutAM already set for intern ID %s", internID),
-		})
-	}
+		// Prevent updating if TimeInAM is missing
+		if dtrEntry.TimeInAM == "" {
+			errorMessages = append(errorMessages, fmt.Sprintf("TimeInAM is missing for intern ID %s, cannot set TimeOutAM", internID))
+			continue
+		}
 
-	// Calculate the duration between TimeInAM and the current TimeOutAM
-	totalSeconds := 0
-	if dtrEntry.TimeInAM != "" {
-		timeInAM, _ := time.Parse("15:04:05", dtrEntry.TimeInAM)
-		timeOutAMParsed, _ := time.Parse("15:04:05", currentTimeStr)
-		duration := timeOutAMParsed.Sub(timeInAM)
-		totalSeconds += int(duration.Seconds())
-	}
+		// Prevent updating if TimeOutAM is already set
+		if dtrEntry.TimeOutAM != "" {
+			errorMessages = append(errorMessages, fmt.Sprintf("TimeOutAM already set for intern ID %s", internID))
+			continue
+		}
 
-	// Set TimeOutAM to the current time
-	dtrEntry.TimeOutAM = currentTimeStr
+		// Calculate the duration between TimeInAM and the current TimeOutAM
+		totalSeconds := 0
+		if dtrEntry.TimeInAM != "" {
+			timeInAM, _ := time.Parse("15:04:05", dtrEntry.TimeInAM)
+			timeOutAMParsed, _ := time.Parse("15:04:05", currentTimeStr)
+			duration := timeOutAMParsed.Sub(timeInAM)
+			totalSeconds += int(duration.Seconds())
+		}
 
-	// Update the TotalHours field
-	hours := totalSeconds / 3600
-	minutes := (totalSeconds % 3600) / 60
-	seconds := totalSeconds % 60
-	dtrEntry.TotalHours = fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+		// Set TimeOutAM to the current time
+		dtrEntry.TimeOutAM = currentTimeStr
 
-	// Save the updated DTR entry
-	if err := middleware.DBConn.Save(&dtrEntry).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to update DTR for intern ID %s", internID),
-		})
-	}
+		// Update the TotalHours field
+		hours := totalSeconds / 3600
+		minutes := (totalSeconds % 3600) / 60
+		seconds := totalSeconds % 60
+		dtrEntry.TotalHours = fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 
-	// Sum up all TotalHours for this intern
-	var allDTRs []model.DTREntry
-	if err := middleware.DBConn.Where("intern_id = ?", internID).Find(&allDTRs).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch DTR entries for intern ID %s", internID),
-		})
-	}
+		// Save the updated DTR entry
+		if err := middleware.DBConn.Save(&dtrEntry).Error; err != nil {
+			errorMessages = append(errorMessages, fmt.Sprintf("Failed to update DTR for intern ID %s", internID))
+			continue
+		}
 
-	// Calculate the total rendered hours
-	totalRenderedSeconds := 0
-	for _, dtr := range allDTRs {
-		if dtr.TotalHours != "" {
-			parts := strings.Split(dtr.TotalHours, ":")
-			if len(parts) == 3 {
-				hours, err := strconv.Atoi(parts[0])
-				if err != nil {
-					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-						"error": fmt.Sprintf("Failed to parse hours from TotalHours for intern ID %s", internID),
-					})
+		// Sum up all TotalHours for this intern
+		var allDTRs []model.DTREntry
+		if err := middleware.DBConn.Where("intern_id = ?", internID).Find(&allDTRs).Error; err != nil {
+			errorMessages = append(errorMessages, fmt.Sprintf("Failed to fetch DTR entries for intern ID %s", internID))
+			continue
+		}
+
+		// Calculate the total rendered hours
+		totalRenderedSeconds := 0
+		for _, dtr := range allDTRs {
+			if dtr.TotalHours != "" {
+				parts := strings.Split(dtr.TotalHours, ":")
+				if len(parts) == 3 {
+					hours, err := strconv.Atoi(parts[0])
+					if err != nil {
+						errorMessages = append(errorMessages, fmt.Sprintf("Failed to parse hours from TotalHours for intern ID %s", internID))
+						continue
+					}
+					minutes, err := strconv.Atoi(parts[1])
+					if err != nil {
+						errorMessages = append(errorMessages, fmt.Sprintf("Failed to parse minutes from TotalHours for intern ID %s", internID))
+						continue
+					}
+					seconds, err := strconv.Atoi(parts[2])
+					if err != nil {
+						errorMessages = append(errorMessages, fmt.Sprintf("Failed to parse seconds from TotalHours for intern ID %s", internID))
+						continue
+					}
+					totalRenderedSeconds += (hours * 3600) + (minutes * 60) + seconds
+				} else {
+					errorMessages = append(errorMessages, fmt.Sprintf("Invalid TotalHours format for intern ID %s", internID))
+					continue
 				}
-				minutes, err := strconv.Atoi(parts[1])
-				if err != nil {
-					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-						"error": fmt.Sprintf("Failed to parse minutes from TotalHours for intern ID %s", internID),
-					})
-				}
-				seconds, err := strconv.Atoi(parts[2])
-				if err != nil {
-					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-						"error": fmt.Sprintf("Failed to parse seconds from TotalHours for intern ID %s", internID),
-					})
-				}
-				totalRenderedSeconds += (hours * 3600) + (minutes * 60) + seconds
-			} else {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error": fmt.Sprintf("Invalid TotalHours format for intern ID %s", internID),
-				})
 			}
 		}
+
+		// Update OjtHoursRendered for the intern
+		intern := model.Intern{}
+		if err := middleware.DBConn.First(&intern, internID).Error; err != nil {
+			errorMessages = append(errorMessages, fmt.Sprintf("Failed to fetch intern with ID %s", internID))
+			continue
+		}
+
+		intern.OjtHoursRendered = fmt.Sprintf("%02d:%02d:%02d", totalRenderedSeconds/3600, (totalRenderedSeconds%3600)/60, totalRenderedSeconds%60)
+
+		if err := middleware.DBConn.Save(&intern).Error; err != nil {
+			errorMessages = append(errorMessages, fmt.Sprintf("Failed to update OjtHoursRendered for intern ID %s", internID))
+			continue
+		}
+
+		successCount++
 	}
 
-	// Update OjtHoursRendered for the intern
-	intern := model.Intern{}
-	if err := middleware.DBConn.First(&intern, internID).Error; err != nil {
+	// Prepare response
+	if len(errorMessages) > 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch intern with ID %s", internID),
-		})
-	}
-
-	intern.OjtHoursRendered = fmt.Sprintf("%02d:%02d:%02d", totalRenderedSeconds/3600, (totalRenderedSeconds%3600)/60, totalRenderedSeconds%60)
-
-	if err := middleware.DBConn.Save(&intern).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to update OjtHoursRendered for intern ID %s", internID),
+			"message": fmt.Sprintf("%d intern(s) successfully updated, %d failed", successCount, len(errorMessages)),
+			"errors":  errorMessages,
 		})
 	}
 
 	return c.JSON(fiber.Map{
-		"message": "TimeOutAM, TotalHours, and OjtHoursRendered updated successfully",
+		"message": fmt.Sprintf("%d intern(s) updated successfully", successCount),
 	})
 }
 
@@ -580,6 +587,7 @@ func UpdateTimeInPM(c *fiber.Ctx) error {
 }
 
 func UpdateTimeOutPM(c *fiber.Ctx) error {
+	// Fetch intern IDs from the URL parameters
 	internIDs := c.Params("id")
 	if internIDs == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -587,6 +595,7 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 		})
 	}
 
+	// Split the intern IDs by commas
 	idList := strings.Split(internIDs, ",")
 	if len(idList) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -594,34 +603,40 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 		})
 	}
 
+	// Get the current time in Asia/Manila timezone
 	loc, _ := time.LoadLocation("Asia/Manila")
 	currentTime := time.Now().In(loc)
 	timeOutPM := currentTime.Format("15:04:05")
 
 	var errors []string
 
+	// Loop through each intern ID
 	for _, id := range idList {
 		var intern model.Intern
+		// Look up intern by ID
 		if err := middleware.DBConn.Table("interns").Where("id = ?", id).First(&intern).Error; err != nil {
 			errors = append(errors, fmt.Sprintf("Intern ID %s not found", id))
 			continue
 		}
 
 		var dtrEntry model.DTREntry
+		// Get current month in format "MM-DD-YY"
 		currentMonth := time.Now().In(loc).Format("01-02-06")
 
+		// Fetch DTR entry for the intern
 		err := middleware.DBConn.Where("intern_id = ? AND month = ?", intern.ID, currentMonth).First(&dtrEntry).Error
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("DTR entry not found for intern ID %s", id))
 			continue
 		}
 
-		// ✅ Check if TimeOutPM already exists
+		// Check if TimeOutPM already exists
 		if dtrEntry.TimeOutPM != "" {
 			errors = append(errors, fmt.Sprintf("TimeOutPM already recorded for intern ID %s", id))
 			continue
 		}
 
+		// Variables to hold the total hours calculations
 		var totalAM, totalPM float64
 		var pmValid bool
 
@@ -656,26 +671,30 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 			continue
 		}
 
+		// Compute total hours
 		totalHours := totalAM + totalPM
 		hours := int(totalHours)
 		minutes := int((totalHours - float64(hours)) * 60)
 		seconds := int(((totalHours-float64(hours))*60 - float64(minutes)) * 60)
 		totalHoursFormatted := fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 
+		// Data to be updated in the DTR entry
 		updateData := map[string]interface{}{
 			"time_out_pm": timeOutPM,
 			"total_hours": totalHoursFormatted,
 		}
 
+		// Start a database transaction
 		tx := middleware.DBConn.Begin()
 
+		// Update DTR entry with new timeOutPM and totalHours
 		if err := tx.Model(&dtrEntry).Updates(updateData).Error; err != nil {
 			tx.Rollback()
 			errors = append(errors, fmt.Sprintf("Failed to update DTR entry for intern ID %s", id))
 			continue
 		}
 
-		// Fetch all entries to recalculate total rendered
+		// Recalculate OJT hours rendered for the intern
 		var dtrEntries []model.DTREntry
 		err = middleware.DBConn.Where("intern_id = ?", intern.ID).Find(&dtrEntries).Error
 		if err != nil {
@@ -684,6 +703,7 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 			continue
 		}
 
+		// Sum all total hours and update OjtHoursRendered
 		var totalRendered time.Duration
 		for _, entry := range dtrEntries {
 			parts := strings.Split(entry.TotalHours, ":")
@@ -696,6 +716,7 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 			totalRendered += time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second
 		}
 
+		// Update OjtHoursRendered in the intern record
 		totalRenderedStr := fmt.Sprintf("%02d:%02d:%02d", int(totalRendered.Hours()), int(totalRendered.Minutes())%60, int(totalRendered.Seconds())%60)
 		err = middleware.DBConn.Model(&intern).Update("ojt_hours_rendered", totalRenderedStr).Error
 		if err != nil {
@@ -704,9 +725,11 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 			continue
 		}
 
+		// Commit the transaction
 		tx.Commit()
 	}
 
+	// Return error details if there were any issues
 	if len(errors) > 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Some updates failed",
@@ -714,6 +737,7 @@ func UpdateTimeOutPM(c *fiber.Ctx) error {
 		})
 	}
 
+	// Return a success message
 	return c.JSON(fiber.Map{
 		"message": fmt.Sprintf("DTR entries updated successfully for intern IDs %s with TimeOutPM %s", internIDs, timeOutPM),
 	})

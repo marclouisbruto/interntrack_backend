@@ -84,11 +84,11 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Post("/scan-qrcode", controller.ScanQRCode)
 	internTrack.Post("/default/scan-qrcode", controller.DefaultTime)
 	internTrack.Put("/update-dtr-update_out_am", controller.UpdateTimeOutAMDefault)
-	internTrack.Put("/update-dtr_out_am/:id", controller.UpdateTimeOutAMCurrent)
+	internTrack.Put("/update-dtr_out_am/:ids", controller.UpdateTimeOutAMCurrent)
 	internTrack.Put("/update-dtr-update_in_pm/:id", controller.UpdateTimeInPM)
 	internTrack.Put("/update-dtr-update_out_pm", controller.UpdateTimeOutPMDefault)
 	internTrack.Put("/update-dtr_out_pm/:id", controller.UpdateTimeOutPM)
-	
+
 	internTrack.Post("/trigger-absent-dtr", func(c *fiber.Ctx) error {
 		go controller.AutoInsertAbsentDTR()
 		return c.SendString("Absent DTR trigger called")

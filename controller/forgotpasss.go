@@ -59,7 +59,6 @@ func SendEmail(toEmail string, code string) error {
 	return nil
 }
 
-
 // In-memory store for reset codes (email → code + expiry)
 var resetCodeStore = struct {
 	sync.RWMutex
