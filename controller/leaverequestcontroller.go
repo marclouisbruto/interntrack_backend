@@ -16,7 +16,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-//PANGGAWA LEAVE REQUEST
+// PANGGAWA LEAVE REQUEST
 func CreateLeaveRequest(c *fiber.Ctx) error {
 	internIDStr := c.FormValue("intern_id")
 	internId, err := strconv.Atoi(internIDStr)
@@ -99,7 +99,7 @@ func CreateLeaveRequest(c *fiber.Ctx) error {
 		InternID:     uint(internId),
 		Reason:       reason,
 		LeaveDate:    formattedDate, // Save date as formatted string
-		ExcuseLetter: base64Str, // Save as base64 string
+		ExcuseLetter: base64Str,     // Save as base64 string
 		Status:       "Pending",
 	}
 
@@ -124,8 +124,6 @@ func CreateLeaveRequest(c *fiber.Ctx) error {
 		Data:    leaveRequest,
 	})
 }
-
-
 
 // PANG APPROVE NG LEAVE REQUEST
 func ApproveLeaveRequest(c *fiber.Ctx) error {
@@ -165,8 +163,8 @@ func ApproveLeaveRequest(c *fiber.Ctx) error {
 
 	// 🔔 Fetch FCM token and intern's name
 	var fcmData struct {
-		FCMToken   string
-		FirstName  string
+		FCMToken  string
+		FirstName string
 	}
 	err := middleware.DBConn.Table("interns").
 		Select("fcm_token, users.first_name").
@@ -206,7 +204,7 @@ func GetLeaveRequests(c *fiber.Ctx) error {
 
 	// Apply filters based on params
 	if status != "" && status != "intern" {
-		query = query.Where("status = ?", status)
+		query = query.Where("status ILIKE ?", status)
 	}
 
 	if internIDStr != "" {
@@ -231,22 +229,6 @@ func GetLeaveRequests(c *fiber.Ctx) error {
 		Data:    leaveRequests,
 	})
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // func GetAllLeaveRequests(c *fiber.Ctx) error {
 // 	var leaveRequests []model.LeaveRequest
@@ -352,4 +334,3 @@ func GetLeaveRequests(c *fiber.Ctx) error {
 // 		Data:    leaveRequests,
 // 	})
 // }
-
