@@ -63,10 +63,14 @@ func DefaultTime(c *fiber.Ctx) error {
 		if intern.User.FirstName != internData.User.FirstName ||
 			intern.User.MiddleName != internData.User.MiddleName ||
 			intern.User.LastName != internData.User.LastName ||
-			intern.User.SuffixName != internData.User.SuffixName {
+			intern.User.SuffixName != internData.User.SuffixName ||
+			intern.Intern.ID != internData.ID ||
+			intern.Intern.SupervisorID != internData.SupervisorID ||
+			intern.Intern.Status != internData.Status ||
+			intern.Intern.Address != internData.Address {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"message": "Provided data does not match the database values",
-				"error":   "Name or suffix mismatch",
+				"message": "Provided intern data does not match the database records",
+				"error":   "Intern details mismatch",
 			})
 		}
 
@@ -178,10 +182,14 @@ func ScanQRCode(c *fiber.Ctx) error {
 		if intern.User.FirstName != internData.User.FirstName ||
 			intern.User.MiddleName != internData.User.MiddleName ||
 			intern.User.LastName != internData.User.LastName ||
-			intern.User.SuffixName != internData.User.SuffixName {
+			intern.User.SuffixName != internData.User.SuffixName ||
+			intern.Intern.ID != internData.ID ||
+			intern.Intern.SupervisorID != internData.SupervisorID ||
+			intern.Intern.Status != internData.Status ||
+			intern.Intern.Address != internData.Address {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"message": "Provided data does not match the database values",
-				"error":   "Name or suffix mismatch",
+				"message": "Provided intern data does not match the database records",
+				"error":   "Intern details mismatch",
 			})
 		}
 
