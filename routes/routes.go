@@ -82,6 +82,7 @@ func AppRoutes(app *fiber.App) {
 	//QR CODE
 	internTrack.Post("/generate-qr", controller.InsertAllDataQRCode)
 	internTrack.Post("/scan-qrcode", controller.ScanQRCode)
+	internTrack.Put("/Update_scan-qrcode", controller.UpdateScannerQr)
 	internTrack.Post("/default/scan-qrcode", controller.DefaultTime)
 	internTrack.Put("/update-dtr-update_out_am", controller.UpdateTimeOutAMDefault)
 	internTrack.Put("/update-dtr_out_am/:ids", controller.UpdateTimeOutAMCurrent)

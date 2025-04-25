@@ -153,6 +153,9 @@ func ScanQRCode(c *fiber.Ctx) error {
 	currentDate := currentTime.Format("2006-01-02")
 	var scannedInterns []fiber.Map
 
+	// Determine if the current time is AM or PM
+	hour := currentTime.Hour()
+
 	// Iterate through all interns in the request
 	for _, intern := range req.Interns {
 		// Check if intern ID is provided
@@ -207,7 +210,6 @@ func ScanQRCode(c *fiber.Ctx) error {
 		supervisorID := internData.SupervisorID
 
 		// Record the current time (any time) for time-in
-		timeIn := currentTimeStr // Capture the current time as time-in
 
 		// Create a new DTR entry
 		dtrEntry := model.DTREntry{
@@ -215,11 +217,20 @@ func ScanQRCode(c *fiber.Ctx) error {
 			InternID:     internData.ID,
 			SupervisorID: supervisorID,
 			Month:        currentMonth,
-			TimeInAM:     timeIn, // Store the time-in value (could be AM or PM depending on the time)
+			TimeInAM:     "", // Initially set as empty
 			TimeOutAM:    "",
-			TimeInPM:     "", // Leave these blank for now (would be updated later)
+			TimeInPM:     "", // Initially set as empty
 			TimeOutPM:    "",
 			TotalHours:   "",
+		}
+
+		// Determine if the current time is AM or PM
+		if hour < 12 {
+			// If it's AM, set TimeInAM to the current time
+			dtrEntry.TimeInAM = currentTimeStr
+		} else {
+			// If it's PM, set TimeInPM to the current time
+			dtrEntry.TimeInPM = currentTimeStr
 		}
 
 		// Save the DTR entry to the database
@@ -251,6 +262,160 @@ func ScanQRCode(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"message": "DTR entries for interns successfully saved",
 		"data":    scannedInterns,
+	})
+
+}
+
+// UpdateScannerQr handles updating the DTR entry for scanning QR code
+func UpdateScannerQr(c *fiber.Ctx) error {
+	type RequestBody struct {
+		Interns []struct {
+			User struct {
+				FirstName  string `json:"first_name"`
+				MiddleName string `json:"middle_name"`
+				LastName   string `json:"last_name"`
+				SuffixName string `json:"suffix_name"`
+			} `json:"user"`
+			Intern model.Intern `json:"intern"`
+		} `json:"interns"`
+	}
+
+	var req RequestBody
+
+	// Parse the incoming request body
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid JSON format",
+			"error":   err.Error(),
+		})
+	}
+
+	// Get current time in Asia/Manila timezone
+	loc, _ := time.LoadLocation("Asia/Manila")
+	currentTime := time.Now().In(loc)
+	currentTimeStr := currentTime.Format("15:04:05")
+	currentDate := currentTime.Format("2006-01-02")
+	var updatedInterns []fiber.Map
+
+	// Determine if the current time is AM or PM
+	hour := currentTime.Hour()
+
+	// Iterate through all interns in the request
+	for _, intern := range req.Interns {
+		// Check if intern ID is provided
+		if intern.Intern.ID == 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": "Intern ID is required",
+			})
+		}
+
+		var internData model.Intern
+		// Fetch intern data from the database
+		if err := middleware.DBConn.Preload("User").First(&internData, intern.Intern.ID).Error; err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"message": "Intern not found",
+				"error":   err.Error(),
+			})
+		}
+
+		// Check if Supervisor ID is missing
+		if internData.SupervisorID == 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": fmt.Sprintf("Supervisor ID missing for intern ID %d", intern.Intern.ID),
+			})
+		}
+
+		// Check if provided name data matches database values
+		if intern.User.FirstName != internData.User.FirstName ||
+			intern.User.MiddleName != internData.User.MiddleName ||
+			intern.User.LastName != internData.User.LastName ||
+			intern.User.SuffixName != internData.User.SuffixName ||
+			intern.Intern.ID != internData.ID ||
+			intern.Intern.SupervisorID != internData.SupervisorID ||
+			intern.Intern.Status != internData.Status ||
+			intern.Intern.Address != internData.Address {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": "Provided intern data does not match the database records",
+				"error":   "Intern details mismatch",
+			})
+		}
+
+		// Check if DTR entry for today exists
+		var existingEntry model.DTREntry
+		if err := middleware.DBConn.
+			Where("intern_id = ? AND DATE(created_at) = ?", intern.Intern.ID, currentDate).
+			First(&existingEntry).Error; err != nil {
+			// No entry exists, so create a new DTR entry
+			currentMonth := currentTime.Format("01-02-06")
+			supervisorID := internData.SupervisorID
+
+			// Record the current time (any time) for time-in
+			dtrEntry := model.DTREntry{
+				UserID:       internData.UserID,
+				InternID:     internData.ID,
+				SupervisorID: supervisorID,
+				Month:        currentMonth,
+				TimeInAM:     "", // Initially set as empty
+				TimeOutAM:    "",
+				TimeInPM:     "", // Initially set as empty
+				TimeOutPM:    "",
+				TotalHours:   "",
+			}
+
+			// Set TimeInAM or TimeInPM based on the time of day
+			if hour < 12 {
+				// If it's AM, set TimeInAM to the current time
+				dtrEntry.TimeInAM = currentTimeStr
+			} else {
+				// If it's PM, set TimeInPM to the current time
+				dtrEntry.TimeInPM = currentTimeStr
+			}
+
+			// Save the DTR entry to the database
+			if err := middleware.DBConn.Create(&dtrEntry).Error; err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"message": "Failed to save DTR entry for intern ID " + fmt.Sprint(intern.Intern.ID),
+					"error":   err.Error(),
+				})
+			}
+		} else {
+			// Entry exists, so update the time fields if empty
+			if hour < 12 && existingEntry.TimeInAM == "" {
+				existingEntry.TimeInAM = currentTimeStr
+			} else if hour >= 12 && existingEntry.TimeInPM == "" {
+				existingEntry.TimeInPM = currentTimeStr
+			}
+
+			// Save the updated DTR entry
+			if err := middleware.DBConn.Save(&existingEntry).Error; err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"message": "Failed to update DTR entry for intern ID " + fmt.Sprint(intern.Intern.ID),
+					"error":   err.Error(),
+				})
+			}
+		}
+
+		// Prepare the response data for the intern
+		updatedInterns = append(updatedInterns, fiber.Map{
+			"user": fiber.Map{
+				"first_name":  internData.User.FirstName,
+				"middle_name": internData.User.MiddleName,
+				"last_name":   internData.User.LastName,
+				"suffix_name": internData.User.SuffixName,
+			},
+			"intern": fiber.Map{
+				"id":            internData.ID,
+				"supervisor_id": internData.SupervisorID,
+				"status":        internData.Status,
+				"address":       internData.Address,
+			},
+		})
+	}
+
+	// Return success response with updated interns' data
+	return c.JSON(fiber.Map{
+		"message": "DTR entries for interns successfully updated",
+		"data":    updatedInterns,
 	})
 }
 
