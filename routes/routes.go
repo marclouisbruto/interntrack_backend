@@ -62,6 +62,7 @@ func AppRoutes(app *fiber.App) {
 	internTrack.Get("/leave-requests/:status", controller.GetLeaveRequests)
 	internTrack.Get("/leave-requests/intern/:intern_id", controller.GetLeaveRequests)
 	internTrack.Get("/leave-requests/:status/intern/:intern_id", controller.GetLeaveRequests)
+	app.Put("/leave-request-on-day/:intern_id", controller.LeaveRequestOnDay)
 
 	//SEARCH
 	internTrack.Get("/interns/search/:value", controller.SearchInternsByParam)
