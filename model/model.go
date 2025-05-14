@@ -98,6 +98,7 @@ type DTREntry struct {
 	TimeInPM     string `json:"time_in_pm"`
 	TimeOutPM    string `json:"time_out_pm"`
 	TotalHours   string `json:"total_hours"`
+	LeaveHours   string `json:"leave_hours"`
 
 	Intern     Intern     `gorm:"foreignKey:InternID"`
 	Supervisor Supervisor `gorm:"foreignKey:SupervisorID"`
