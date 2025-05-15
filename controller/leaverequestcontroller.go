@@ -11,6 +11,7 @@ import (
 	"log"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -227,6 +228,120 @@ func GetLeaveRequests(c *fiber.Ctx) error {
 		RetCode: "200",
 		Message: "Leave requests fetched successfully",
 		Data:    leaveRequests,
+	})
+}
+
+func LeaveRequestOnDay(c *fiber.Ctx) error {
+	loc, _ := time.LoadLocation("Asia/Manila")
+	currentDate := time.Now().In(loc).Format("2006-01-02")
+
+	internIDParam := c.Params("intern_id")
+	internID, err := strconv.Atoi(internIDParam)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid intern ID",
+		})
+	}
+
+	// Updated request body struct with Reason
+	type LeaveRequestBody struct {
+		LeaveRequestTime string `json:"leave_request_time"` // e.g. "08:00:00"
+		ReturnInOJT      string `json:"return_in_ojt"`      // e.g. "09:00:00"
+		Reason           string `json:"reason"`             // e.g. "Ako po ay may kukuhain lang"
+	}
+
+	var body LeaveRequestBody
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid request body",
+			"error":   err.Error(),
+		})
+	}
+
+	// Find today's DTR entry
+	var dtr model.DTREntry
+	if err := middleware.DBConn.
+		Where("intern_id = ? AND DATE(created_at) = ?", internID, currentDate).
+		First(&dtr).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"message": "DTR entry not found for today",
+		})
+	}
+
+	// Parse leave times
+	leaveTime, err1 := time.Parse("15:04:05", body.LeaveRequestTime)
+	returnTime, err2 := time.Parse("15:04:05", body.ReturnInOJT)
+	if err1 != nil || err2 != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid time format (should be HH:MM:SS)",
+		})
+	}
+
+	// Compute duration of leave
+	duration := returnTime.Sub(leaveTime)
+	if duration < 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Return time must be after leave request time",
+		})
+	}
+
+	leaveSeconds := int(duration.Seconds())
+
+	// Format leave duration to HH:MM:SS
+	lh := leaveSeconds / 3600
+	lm := (leaveSeconds % 3600) / 60
+	ls := leaveSeconds % 60
+	leaveHoursStr := fmt.Sprintf("%02d:%02d:%02d", lh, lm, ls)
+
+	// Deduct leave duration from TotalHours
+	totalSeconds := 0
+	if dtr.TotalHours != "" {
+		parts := strings.Split(dtr.TotalHours, ":")
+		if len(parts) == 3 {
+			hours, _ := strconv.Atoi(parts[0])
+			minutes, _ := strconv.Atoi(parts[1])
+			seconds, _ := strconv.Atoi(parts[2])
+			totalSeconds = (hours * 3600) + (minutes * 60) + seconds
+		}
+	}
+
+	updatedTotal := totalSeconds - leaveSeconds
+	if updatedTotal < 0 {
+		updatedTotal = 0
+	}
+	h := updatedTotal / 3600
+	m := (updatedTotal % 3600) / 60
+	s := updatedTotal % 60
+	dtr.TotalHours = fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+
+	// Save updated DTR
+	if err := middleware.DBConn.Save(&dtr).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to update DTR",
+		})
+	}
+
+	// Insert new LeaveRequest
+	newLeave := model.LeaveRequest{
+		InternID:   uint(internID),
+		LeaveDate:  currentDate,
+		LeaveHours: leaveHoursStr,
+		Reason:     body.Reason,
+		Status:     "Pending",
+	}
+
+	if err := middleware.DBConn.Create(&newLeave).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to save leave request",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message":      "Leave request recorded and total hours updated successfully",
+		"updated_time": dtr.TotalHours,
+		"leave_hours":  leaveHoursStr,
+		"reason":       body.Reason,
+		"leave_date":   currentDate,
 	})
 }
 
