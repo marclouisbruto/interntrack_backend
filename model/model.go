@@ -111,7 +111,6 @@ type LeaveRequest struct {
 	Reason       string `json:"reason" gorm:"type:text;not null"`
 	Status       string `json:"status" gorm:"type:varchar(20);default:'Pending'"`
 	ExcuseLetter string `json:"excuse_letter,omitempty"` // File path or URL (optional)
-	OnDayReason  string `json:"On_Day_Reason"`
 
 	Intern Intern `gorm:"foreignKey:InternID"` // Relationship to Interns table
 }

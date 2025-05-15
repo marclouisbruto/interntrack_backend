@@ -56,13 +56,13 @@ func AppRoutes(app *fiber.App) {
 	app.Post("/reset-password", controller.ResetPassword)
 
 	// leave request
-	internTrack.Post("/leave-request/upload", controller.CreateLeaveRequest)
+	internTrack.Post("/leave-request-on-day/:intern_id", controller.LeaveRequestOnDay)
+	internTrack.Put("/leave-request/:id/upload", controller.UploadExcuseLetter)
 	internTrack.Static("/uploads/excuse_letters", "./uploads/excuse_letters") //tumutulong sa pang view or pathing ng image
 	internTrack.Get("/leave-requests", controller.GetLeaveRequests)
 	internTrack.Get("/leave-requests/:status", controller.GetLeaveRequests)
 	internTrack.Get("/leave-requests/intern/:intern_id", controller.GetLeaveRequests)
 	internTrack.Get("/leave-requests/:status/intern/:intern_id", controller.GetLeaveRequests)
-	internTrack.Put("/leave-request-on-day/:intern_id", controller.LeaveRequestOnDay)
 
 	//SEARCH
 	internTrack.Get("/interns/search/:value", controller.SearchInternsByParam)
