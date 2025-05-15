@@ -98,7 +98,6 @@ type DTREntry struct {
 	TimeInPM     string `json:"time_in_pm"`
 	TimeOutPM    string `json:"time_out_pm"`
 	TotalHours   string `json:"total_hours"`
-	LeaveHours   string `json:"leave_hours"`
 
 	Intern     Intern     `gorm:"foreignKey:InternID"`
 	Supervisor Supervisor `gorm:"foreignKey:SupervisorID"`
@@ -108,6 +107,7 @@ type LeaveRequest struct {
 	gorm.Model
 	InternID     uint   `json:"intern_id" gorm:"not null;constraint:OnDelete:CASCADE"`
 	LeaveDate    string `json:"leave_date"`
+	LeaveHours   string `json:"leave_hours"`
 	Reason       string `json:"reason" gorm:"type:text;not null"`
 	Status       string `json:"status" gorm:"type:varchar(20);default:'Pending'"`
 	ExcuseLetter string `json:"excuse_letter,omitempty"` // File path or URL (optional)
