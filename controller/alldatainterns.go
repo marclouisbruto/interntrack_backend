@@ -419,8 +419,8 @@ func ApproveInterns(c *fiber.Ctx) error {
 
 		// ✅ Fetch FCM token (adjust query if stored in separate table)
 		var fcmToken string
-		err = middleware.DBConn.Table("interns").
-			Select("fcm_token").
+		err = middleware.DBConn.Table("token_requests").
+			Select("token").
 			Where("id = ?", intern.ID).
 			Scan(&fcmToken).Error
 

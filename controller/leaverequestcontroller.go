@@ -8,7 +8,6 @@ import (
 	"intern_template_v1/model"
 	"intern_template_v1/model/response"
 	"io"
-	"log"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -92,6 +91,7 @@ func UploadExcuseLetter(c *fiber.Ctx) error {
 func ApproveLeaveRequest(c *fiber.Ctx) error {
 	leaveRequestID := c.Params("id")
 
+	// Step 1: Fetch the leave request
 	var leaveRequest model.LeaveRequest
 	if err := middleware.DBConn.
 		Where("id = ?", leaveRequestID).
@@ -101,13 +101,14 @@ func ApproveLeaveRequest(c *fiber.Ctx) error {
 		})
 	}
 
+	// Step 2: Check if status is "Pending"
 	if leaveRequest.Status != "Pending" {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
 			"error": "Leave request status is not pending",
 		})
 	}
 
-	// ✅ Deduct from DTR total_hours now
+	// Step 3: Fetch the DTR entry for that leave date
 	var dtr model.DTREntry
 	if err := middleware.DBConn.
 		Where("intern_id = ? AND DATE(created_at) = ?", leaveRequest.InternID, leaveRequest.LeaveDate).
@@ -117,30 +118,37 @@ func ApproveLeaveRequest(c *fiber.Ctx) error {
 		})
 	}
 
-	// Parse leaveHours from string to seconds
-	parts := strings.Split(leaveRequest.LeaveHours, ":")
-	hours, _ := strconv.Atoi(parts[0])
-	mins, _ := strconv.Atoi(parts[1])
-	secs, _ := strconv.Atoi(parts[2])
-	leaveSeconds := (hours * 3600) + (mins * 60) + secs
+	// Step 4: Parse Leave Hours
+	leaveParts := strings.Split(leaveRequest.LeaveHours, ":")
+	if len(leaveParts) != 3 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid leave hours format",
+		})
+	}
+	leaveHours, _ := strconv.Atoi(leaveParts[0])
+	leaveMins, _ := strconv.Atoi(leaveParts[1])
+	leaveSecs, _ := strconv.Atoi(leaveParts[2])
+	leaveTotalSecs := (leaveHours * 3600) + (leaveMins * 60) + leaveSecs
 
-	// Parse DTR total_hours
-	totalSeconds := 0
+	// Step 5: Parse DTR total_hours
+	dtrTotalSecs := 0
 	if dtr.TotalHours != "" {
 		dtrParts := strings.Split(dtr.TotalHours, ":")
 		if len(dtrParts) == 3 {
 			h, _ := strconv.Atoi(dtrParts[0])
 			m, _ := strconv.Atoi(dtrParts[1])
 			s, _ := strconv.Atoi(dtrParts[2])
-			totalSeconds = (h * 3600) + (m * 60) + s
+			dtrTotalSecs = (h * 3600) + (m * 60) + s
 		}
 	}
 
-	newTotal := totalSeconds - leaveSeconds
-	if newTotal < 0 {
-		newTotal = 0
+	// Step 6: Update total hours
+	newTotalSecs := dtrTotalSecs - leaveTotalSecs
+	if newTotalSecs < 0 {
+		newTotalSecs = 0
 	}
-	dtr.TotalHours = fmt.Sprintf("%02d:%02d:%02d", newTotal/3600, (newTotal%3600)/60, newTotal%60)
+	dtr.TotalHours = fmt.Sprintf("%02d:%02d:%02d",
+		newTotalSecs/3600, (newTotalSecs%3600)/60, newTotalSecs%60)
 
 	if err := middleware.DBConn.Save(&dtr).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -148,7 +156,7 @@ func ApproveLeaveRequest(c *fiber.Ctx) error {
 		})
 	}
 
-	// Mark leave as approved
+	// Step 7: Mark as Approved
 	if err := middleware.DBConn.Model(&leaveRequest).
 		Update("status", "Approved").Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -156,24 +164,34 @@ func ApproveLeaveRequest(c *fiber.Ctx) error {
 		})
 	}
 
-	// Notify user
+	// Step 8: Notify intern via FCM
 	var fcmData struct {
-		FCMToken  string
+		Token     string
 		FirstName string
 	}
 	err := middleware.DBConn.Table("interns").
-		Select("fcm_token, users.first_name").
-		Joins("JOIN users ON users.users_id = interns.id").
-		Where("interns.intern_id = ?", leaveRequest.InternID).
+		Select("token_requests.token, users.first_name").
+		Joins("JOIN users ON users.id = interns.id").
+		Joins("JOIN token_requests ON token_requests.id = interns.id").
+		Where("interns.id = ?", leaveRequest.InternID).
 		Scan(&fcmData).Error
 
-	if err != nil || fcmData.FCMToken == "" {
-		log.Printf("⚠️ FCM token not found for intern ID %d", leaveRequest.InternID)
+	if err != nil || fcmData.Token == "" {
+		fmt.Printf("⚠️ FCM token not found for intern ID %d, skipping notification\n", leaveRequest.InternID)
 	} else {
-		SendPushNotification(fcmData.FCMToken, "Leave Request Approved",
-			fmt.Sprintf("Hi %s, your leave request has been approved.", fcmData.FirstName))
+		go func() {
+			err := SendPushNotification(
+				fcmData.Token,
+				"Leave Request Approved",
+				fmt.Sprintf("Hi %s, your leave request has been approved.", fcmData.FirstName),
+			)
+			if err != nil {
+				fmt.Printf("⚠️ Failed to send notification to intern ID %d: %v\n", leaveRequest.InternID, err)
+			}
+		}()
 	}
 
+	// Final response
 	return c.JSON(fiber.Map{
 		"message": "Leave request approved and total hours updated.",
 	})
@@ -248,6 +266,17 @@ func LeaveRequestOnDay(c *fiber.Ctx) error {
 		})
 	}
 
+	// Check if a leave request already exists for today
+	var existingLeave model.LeaveRequest
+	if err := middleware.DBConn.
+		Where("intern_id = ? AND leave_date = ?", internID, currentDate).
+		First(&existingLeave).Error; err == nil {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"message": "A leave request already exists for today.",
+		})
+	}
+
+	// Check if DTR entry exists
 	var dtr model.DTREntry
 	if err := middleware.DBConn.
 		Where("intern_id = ? AND DATE(created_at) = ?", internID, currentDate).
@@ -257,6 +286,7 @@ func LeaveRequestOnDay(c *fiber.Ctx) error {
 		})
 	}
 
+	// Parse leave and return times
 	leaveTime, err1 := time.Parse("15:04:05", body.LeaveRequestTime)
 	returnTime, err2 := time.Parse("15:04:05", body.ReturnInOJT)
 	if err1 != nil || err2 != nil {
@@ -265,6 +295,7 @@ func LeaveRequestOnDay(c *fiber.Ctx) error {
 		})
 	}
 
+	// Calculate duration
 	duration := returnTime.Sub(leaveTime)
 	if duration < 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -278,9 +309,7 @@ func LeaveRequestOnDay(c *fiber.Ctx) error {
 	ls := leaveSeconds % 60
 	leaveHoursStr := fmt.Sprintf("%02d:%02d:%02d", lh, lm, ls)
 
-	// 🔒 Do NOT deduct from totalHours while status is pending
-
-	// Create Leave Request
+	// Create new leave request
 	newLeave := model.LeaveRequest{
 		InternID:   uint(internID),
 		LeaveDate:  currentDate,
@@ -302,6 +331,7 @@ func LeaveRequestOnDay(c *fiber.Ctx) error {
 		"leave_date":  currentDate,
 	})
 }
+
 
 
 // func GetAllLeaveRequests(c *fiber.Ctx) error {
