@@ -13,6 +13,7 @@ import (
 
 // Define QRCodeData struct to be shared between ScanQRCode and DefaultTime
 type QRCodeData struct {
+	UserID       uint   `json:"user_id"`
 	FirstName    string `json:"first_name"`
 	MiddleName   string `json:"middle_name"`
 	LastName     string `json:"last_name"`
@@ -53,14 +54,12 @@ func ScanQRCode(c *fiber.Ctx) error {
 
 	// Iterate through all interns in the request
 	for _, intern := range req.Interns {
-		// Check if intern ID is provided in QR code data
 		if intern.QRCodeData.InternID == 0 {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"message": "Intern ID is required in QR code data",
 			})
 		}
 
-		// Check if Supervisor ID is provided
 		if intern.QRCodeData.SupervisorID == 0 {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"message": fmt.Sprintf("Supervisor ID missing for intern ID %d", intern.QRCodeData.InternID),
@@ -72,6 +71,13 @@ func ScanQRCode(c *fiber.Ctx) error {
 		if err := middleware.DBConn.Preload("User").Where("id = ?", intern.QRCodeData.InternID).First(&storedIntern).Error; err != nil {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 				"message": fmt.Sprintf("Intern with ID %d not found", intern.QRCodeData.InternID),
+			})
+		}
+
+		// ✅ NEW: Validate UserID from QRCodeData vs actual User.ID in DB
+		if intern.QRCodeData.UserID != storedIntern.User.ID {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": fmt.Sprintf("User ID mismatch for intern ID %d", intern.QRCodeData.InternID),
 			})
 		}
 
@@ -102,26 +108,23 @@ func ScanQRCode(c *fiber.Ctx) error {
 
 		// Create a new DTR entry
 		dtrEntry := model.DTREntry{
+			UserID:       storedIntern.User.ID, // ✅ safe value from DB
 			InternID:     intern.QRCodeData.InternID,
 			SupervisorID: intern.QRCodeData.SupervisorID,
 			Month:        currentMonth,
-			TimeInAM:     "", // Initially set as empty
+			TimeInAM:     "",
 			TimeOutAM:    "",
-			TimeInPM:     "", // Initially set as empty
+			TimeInPM:     "",
 			TimeOutPM:    "",
 			TotalHours:   "",
 		}
 
-		// Record the current time (any time) for time-in
 		if hour < 12 {
-			// If it's AM, set TimeInAM to the current time
 			dtrEntry.TimeInAM = currentTimeStr
 		} else {
-			// If it's PM, set TimeInPM to the current time
 			dtrEntry.TimeInPM = currentTimeStr
 		}
 
-		// Save the DTR entry to the database
 		if err := middleware.DBConn.Create(&dtrEntry).Error; err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"message": "Failed to save DTR entry for intern ID " + fmt.Sprint(intern.QRCodeData.InternID),
@@ -129,7 +132,6 @@ func ScanQRCode(c *fiber.Ctx) error {
 			})
 		}
 
-		// Prepare the response data for the intern
 		scannedInterns = append(scannedInterns, fiber.Map{
 			"user": fiber.Map{
 				"first_name":  intern.QRCodeData.FirstName,
@@ -146,7 +148,6 @@ func ScanQRCode(c *fiber.Ctx) error {
 		})
 	}
 
-	// Return success response with scanned interns' data
 	return c.JSON(fiber.Map{
 		"message": "DTR entries for interns successfully saved",
 		"data":    scannedInterns,
